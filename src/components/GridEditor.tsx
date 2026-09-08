@@ -14,6 +14,12 @@ interface Corners {
   br: Point;
 }
 
+interface GridConfig {
+  id: number;
+  cols: number;
+  corners: Corners;
+}
+
 export interface GridConfirmResult {
   tubes: number[][]; // 下から上の順、EMPTYは含まない
   capacity: number; // 1本あたりの段数
@@ -29,6 +35,7 @@ interface Props {
 
 const HANDLE_R = 9;
 const SAMPLE_RADIUS = 4;
+const CAPACITY = 4;
 
 function lerp(a: Point, b: Point, t: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
@@ -45,17 +52,32 @@ function sampleColorAt(ctx: CanvasRenderingContext2D, x: number, y: number): RGB
   const sx = Math.max(0, Math.round(x - SAMPLE_RADIUS));
   const sy = Math.max(0, Math.round(y - SAMPLE_RADIUS));
   const data = ctx.getImageData(sx, sy, size, size).data;
+
   let r = 0;
   let g = 0;
   let b = 0;
   let n = 0;
+
   for (let i = 0; i < data.length; i += 4) {
     r += data[i];
     g += data[i + 1];
     b += data[i + 2];
     n++;
   }
+
   return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
+}
+
+function initialCorners(w: number, h: number): Corners {
+  const marginX = w * 0.08;
+  const marginY = h * 0.08;
+
+  return {
+    tl: { x: marginX, y: marginY },
+    tr: { x: w - marginX, y: marginY },
+    bl: { x: marginX, y: h - marginY },
+    br: { x: w - marginX, y: h - marginY },
+  };
 }
 
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
@@ -63,106 +85,152 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
-  const [cols, setCols] = useState(8);
-  const [rows, setRows] = useState(4);
-  const [corners, setCorners] = useState<Corners | null>(null);
+  const [grids, setGrids] = useState<GridConfig[]>([]);
+  const [selectedGridId, setSelectedGridId] = useState<number | null>(null);
+  const [nextGridId, setNextGridId] = useState(1);
+
+  // gridId-col-row
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
   const [emptyTubeCount, setEmptyTubeCount] = useState(0);
-  const [dragging, setDragging] = useState<keyof Corners | null>(null);
+  const [dragging, setDragging] = useState<{ gridId: number; corner: keyof Corners } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [previewColors, setPreviewColors] = useState<Map<string, RGB>>(new Map());
 
-  // 画像をcanvasに描画し、初期グリッド（内側90%程度）を設定する
   useEffect(() => {
     const maxW = Math.min(900, image.naturalWidth);
     const scale = maxW / image.naturalWidth;
     const w = Math.round(image.naturalWidth * scale);
     const h = Math.round(image.naturalHeight * scale);
+
     setCanvasSize({ w, h });
 
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     canvas.width = w;
     canvas.height = h;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
     ctx.drawImage(image, 0, 0, w, h);
 
-    const marginX = w * 0.08;
-    const marginY = h * 0.08;
-    setCorners({
-      tl: { x: marginX, y: marginY },
-      tr: { x: w - marginX, y: marginY },
-      bl: { x: marginX, y: h - marginY },
-      br: { x: w - marginX, y: h - marginY },
-    });
+    const grid = {
+      id: 0,
+      cols: 8,
+      corners: initialCorners(w, h),
+    };
+
+    setGrids([grid]);
+    setSelectedGridId(grid.id);
+    setNextGridId(1);
     setOverrides(new Map());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPreviewColors(new Map());
+    setErrorMsg(null);
   }, [image]);
 
-  const gridPoints: Point[][] = useMemo(() => {
-    if (!corners) return [];
-    const pts: Point[][] = [];
-    for (let r = 0; r < rows; r++) {
-      const v = rows === 1 ? 0.5 : r / (rows - 1);
-      const rowPts: Point[] = [];
-      for (let c = 0; c < cols; c++) {
-        const u = cols === 1 ? 0.5 : c / (cols - 1);
-        rowPts.push(bilinear(corners, u, v));
-      }
-      pts.push(rowPts);
-    }
-    return pts;
-  }, [corners, rows, cols]);
+  const gridPoints = useMemo(() => {
+    const result = new Map<number, Point[][]>();
 
-  // ポインタ操作でハンドルをドラッグ
+    for (const grid of grids) {
+      const points: Point[][] = [];
+
+      for (let r = 0; r < CAPACITY; r++) {
+        const v = CAPACITY === 1 ? 0.5 : r / (CAPACITY - 1);
+        const row: Point[] = [];
+
+        for (let c = 0; c < grid.cols; c++) {
+          const u = grid.cols === 1 ? 0.5 : c / (grid.cols - 1);
+          row.push(bilinear(grid.corners, u, v));
+        }
+
+        points.push(row);
+      }
+
+      result.set(grid.id, points);
+    }
+
+    return result;
+  }, [grids]);
+
   useEffect(() => {
     if (!dragging) return;
+
     const onMove = (e: PointerEvent) => {
       const wrapper = wrapperRef.current;
       if (!wrapper) return;
+
       const rect = wrapper.getBoundingClientRect();
       const x = Math.min(Math.max(e.clientX - rect.left, 0), canvasSize.w);
       const y = Math.min(Math.max(e.clientY - rect.top, 0), canvasSize.h);
-      setCorners((prev) => (prev ? { ...prev, [dragging]: { x, y } } : prev));
+
+      setGrids((prev) =>
+        prev.map((grid) =>
+          grid.id === dragging.gridId
+            ? {
+                ...grid,
+                corners: {
+                  ...grid.corners,
+                  [dragging.corner]: { x, y },
+                },
+              }
+            : grid
+        )
+      );
     };
+
     const onUp = () => setDragging(null);
+
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
   }, [dragging, canvasSize]);
 
-  const cellKey = (col: number, row: number) => `${col}-${row}`;
+  const cellKey = (gridId: number, col: number, row: number) =>
+    `${gridId}-${col}-${row}`;
 
-  // グリッド交点が動くたびに、プレビュー用の色をサンプリングし直す
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!ctx || gridPoints.length === 0) return;
+    if (!ctx || gridPoints.size === 0) return;
+
     const map = new Map<string, RGB>();
-    for (let r = 0; r < gridPoints.length; r++) {
-      for (let c = 0; c < gridPoints[r].length; c++) {
-        const p = gridPoints[r][c];
-        map.set(cellKey(c, r), sampleColorAt(ctx, p.x, p.y));
+
+    for (const grid of grids) {
+      const points = gridPoints.get(grid.id);
+      if (!points) continue;
+
+      for (let r = 0; r < points.length; r++) {
+        for (let c = 0; c < points[r].length; c++) {
+          const p = points[r][c];
+          map.set(cellKey(grid.id, c, r), sampleColorAt(ctx, p.x, p.y));
+        }
       }
     }
+
     setPreviewColors(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gridPoints]);
 
-  const cycleOverride = (col: number, row: number) => {
+  const cycleOverride = (gridId: number, col: number, row: number) => {
+    setSelectedGridId(gridId);
+
     setOverrides((prev) => {
       const next = new Map(prev);
-      const key = cellKey(col, row);
+      const key = cellKey(gridId, col, row);
       const cur = next.get(key) ?? AUTO;
+
       if (cur === AUTO) {
         next.set(key, EMPTY);
       } else if (cur === EMPTY) {
-        // 不明は全体で1個まで
-        const alreadyUnknown = [...next.entries()].some(([k, v]) => v === UNKNOWN && k !== key);
+        const alreadyUnknown = [...next.entries()].some(
+          ([k, v]) => v === UNKNOWN && k !== key
+        );
+
         if (alreadyUnknown) {
           next.set(key, AUTO);
         } else {
@@ -171,87 +239,218 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       } else {
         next.delete(key);
       }
+
       return next;
     });
   };
 
+  const handleAddGrid = () => {
+    if (canvasSize.w === 0 || canvasSize.h === 0) return;
+
+    const selected = grids.find((grid) => grid.id === selectedGridId) ?? grids[grids.length - 1];
+    if (!selected) return;
+
+    const id = nextGridId;
+    const offset = Math.max(20, canvasSize.h * 0.08);
+
+    const width = selected.corners.tr.x - selected.corners.tl.x;
+    const height = selected.corners.bl.y - selected.corners.tl.y;
+
+    const shiftY = selected.corners.bl.y + height * 0.05 + offset > canvasSize.h
+      ? -offset
+      : offset;
+
+    const shifted = {
+      tl: { x: selected.corners.tl.x, y: Math.max(0, Math.min(canvasSize.h, selected.corners.tl.y + shiftY)) },
+      tr: { x: selected.corners.tr.x, y: Math.max(0, Math.min(canvasSize.h, selected.corners.tr.y + shiftY)) },
+      bl: { x: selected.corners.bl.x, y: Math.max(0, Math.min(canvasSize.h, selected.corners.bl.y + shiftY)) },
+      br: { x: selected.corners.br.x, y: Math.max(0, Math.min(canvasSize.h, selected.corners.br.y + shiftY)) },
+    };
+
+    setGrids((prev) => [...prev, { id, cols: selected.cols, corners: shifted }]);
+    setSelectedGridId(id);
+    setNextGridId((v) => v + 1);
+  };
+
+  const handleRemoveGrid = () => {
+    if (grids.length <= 1) return;
+
+    const index = grids.findIndex((grid) => grid.id === selectedGridId);
+    if (index < 0) return;
+
+    const removedId = grids[index].id;
+    const remaining = grids.filter((grid) => grid.id !== removedId);
+
+    setGrids(remaining);
+    setSelectedGridId(remaining[Math.max(0, index - 1)].id);
+
+    setOverrides((prev) => {
+      const next = new Map<string, number>();
+
+      for (const [key, value] of prev) {
+        if (!key.startsWith(`${removedId}-`)) {
+          next.set(key, value);
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const handleAddColumn = () => {
+    if (selectedGridId === null) return;
+
+    setGrids((prev) =>
+      prev.map((grid) =>
+        grid.id === selectedGridId ? { ...grid, cols: grid.cols + 1 } : grid
+      )
+    );
+  };
+
+  const handleRemoveColumn = () => {
+    if (selectedGridId === null) return;
+
+    setGrids((prev) =>
+      prev.map((grid) =>
+        grid.id === selectedGridId
+          ? { ...grid, cols: Math.max(1, grid.cols - 1) }
+          : grid
+      )
+    );
+  };
+
+  const handleResetGrid = () => {
+    if (canvasSize.w === 0 || canvasSize.h === 0) return;
+
+    const grid = {
+      id: 0,
+      cols: 8,
+      corners: initialCorners(canvasSize.w, canvasSize.h),
+    };
+
+    setGrids([grid]);
+    setSelectedGridId(grid.id);
+    setNextGridId(1);
+    setOverrides(new Map());
+  };
+
   const handleSolveClick = () => {
     setErrorMsg(null);
+
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx || gridPoints.length === 0) return;
+    if (!canvas || !ctx || grids.length === 0) return;
 
     const cells: GridCell[] = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const pt = gridPoints[r][c];
-        const key = cellKey(c, r);
-        const override = overrides.get(key);
-        const rgb = sampleColorAt(ctx, pt.x, pt.y);
-        cells.push({
-          col: c,
-          row: r,
-          x: pt.x,
-          y: pt.y,
-          rgb,
-          value: override ?? AUTO,
-        });
+
+    for (const grid of grids) {
+      const points = gridPoints.get(grid.id);
+      if (!points) continue;
+
+      for (let r = 0; r < CAPACITY; r++) {
+        for (let c = 0; c < grid.cols; c++) {
+          const pt = points[r][c];
+          const key = cellKey(grid.id, c, r);
+          const override = overrides.get(key);
+          const rgb = sampleColorAt(ctx, pt.x, pt.y);
+
+          cells.push({
+            col: c,
+            row: r,
+            x: pt.x,
+            y: pt.y,
+            rgb,
+            value: override ?? AUTO,
+          });
+        }
       }
     }
 
     const { palette, assignedCells } = clusterColors(cells);
     const flatValues = assignedCells.map((c) => c.value);
-
-    const inference = inferUnknownColor(flatValues, rows);
+    const inference = inferUnknownColor(flatValues, CAPACITY);
     const warnings: string[] = [];
+
     let resolvedValues = assignedCells;
+
     if (flatValues.includes(UNKNOWN)) {
       if (!inference.ok || inference.inferredColor === null) {
         setErrorMsg(inference.message);
         return;
       }
+
       warnings.push(inference.message);
       resolvedValues = assignedCells.map((c) =>
-        c.value === UNKNOWN ? { ...c, value: inference.inferredColor as number } : c
+        c.value === UNKNOWN
+          ? { ...c, value: inference.inferredColor as number }
+          : c
       );
     }
 
-    // 列(試験管)ごとに、下(row=rows-1)→上(row=0)の順で色を並べる。EMPTYは除外。
     const tubes: number[][] = [];
-    for (let c = 0; c < cols; c++) {
-      const tube: number[] = [];
-      for (let r = rows - 1; r >= 0; r--) {
-        const cell = resolvedValues.find((cc) => cc.col === c && cc.row === r);
-        if (cell && cell.value !== EMPTY) tube.push(cell.value);
+    let cellIndex = 0;
+
+    for (const grid of grids) {
+      for (let c = 0; c < grid.cols; c++) {
+        const tube: number[] = [];
+
+        for (let r = CAPACITY - 1; r >= 0; r--) {
+          const cell = resolvedValues[cellIndex++];
+          if (cell && cell.value !== EMPTY) {
+            tube.push(cell.value);
+          }
+        }
+
+        tubes.push(tube);
       }
-      tubes.push(tube);
     }
-    for (let i = 0; i < emptyTubeCount; i++) tubes.push([]);
+
+    for (let i = 0; i < emptyTubeCount; i++) {
+      tubes.push([]);
+    }
 
     const paletteRgb: (RGB | null)[] = palette.slice();
-    if (inference.inferredColor !== null && inference.inferredColor >= palette.length) {
+
+    if (
+      inference.inferredColor !== null &&
+      inference.inferredColor >= palette.length
+    ) {
       paletteRgb.push(null);
     }
 
-    onConfirm({ tubes, capacity: rows, paletteRgb, warnings });
+    onConfirm({
+      tubes,
+      capacity: CAPACITY,
+      paletteRgb,
+      warnings,
+    });
   };
 
   return (
     <div className="step-panel">
       <h2>(2/3) グリッドで色取得</h2>
+
       <ol className="instructions">
-        <li>四隅の丸いハンドルをドラッグして、各試験管の色の中心に交点が来るように調整してください。</li>
-        <li>c- / c+ で試験管の本数（列）を、g- / g+ で1本あたりの段数（行）を調整できます。</li>
-        <li>交点をクリックすると 自動 → 空 → 不明 → 自動 の順に切り替わります（不明は1箇所まで）。</li>
+        <li>
+          各グリッドの交点が試験管の色水の中心に来るように、四隅のハンドルを調整してください。
+        </li>
+        <li>
+          g+ / g- でグリッドを追加・削除し、c+ / c- で選択中のグリッドの縦線を追加・削除できます。
+        </li>
+        <li>
+          交点をクリックすると 自動 → 空 → 不明 → 自動 の順に切り替わります（不明は1箇所まで）。
+        </li>
       </ol>
 
       <div className="grid-controls">
-        <span>試験管の数(列): {cols}</span>
-        <button onClick={() => setCols((v) => Math.max(1, v - 1))}>c-</button>
-        <button onClick={() => setCols((v) => v + 1)}>c+</button>
-        <span>段数(行): {rows}</span>
-        <button onClick={() => setRows((v) => Math.max(2, v - 1))}>g-</button>
-        <button onClick={() => setRows((v) => v + 1)}>g+</button>
+        <span>グリッド: {selectedGridId === null ? '-' : grids.findIndex((g) => g.id === selectedGridId) + 1}</span>
+        <button onClick={handleRemoveGrid} disabled={grids.length <= 1}>g-</button>
+        <button onClick={handleAddGrid}>g+</button>
+
+        <button onClick={handleRemoveColumn} disabled={selectedGridId === null}>c-</button>
+        <button onClick={handleAddColumn} disabled={selectedGridId === null}>c+</button>
+
+        <button onClick={handleResetGrid}>gr</button>
       </div>
 
       <div
@@ -260,83 +459,119 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         style={{ width: canvasSize.w, height: canvasSize.h }}
       >
         <canvas ref={canvasRef} />
-        {corners && (
-          <svg
-            className="grid-overlay"
-            width={canvasSize.w}
-            height={canvasSize.h}
-            viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`}
-          >
-            {/* 行方向の線 */}
-            {gridPoints.map((rowPts, r) => (
-              <polyline
-                key={`row-${r}`}
-                points={rowPts.map((p) => `${p.x},${p.y}`).join(' ')}
-                className="grid-line"
-              />
-            ))}
-            {/* 列方向の線 */}
-            {cols > 0 &&
-              Array.from({ length: cols }).map((_, c) => (
-                <polyline
-                  key={`col-${c}`}
-                  points={gridPoints.map((rowPts) => `${rowPts[c].x},${rowPts[c].y}`).join(' ')}
-                  className="grid-line"
-                />
-              ))}
-            {/* 交点 */}
-            {gridPoints.map((rowPts, r) =>
-              rowPts.map((p, c) => {
-                const key = cellKey(c, r);
-                const ov = overrides.get(key);
-                const sampled = previewColors.get(key);
-                let fill = sampled ? `rgb(${sampled.r},${sampled.g},${sampled.b})` : 'rgba(255,255,255,0.6)';
-                let label = '';
-                if (ov === EMPTY) {
-                  fill = '#888';
-                  label = '空';
-                } else if (ov === UNKNOWN) {
-                  fill = '#ff0';
-                  label = '?';
-                }
-                return (
-                  <g
-                    key={key}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      cycleOverride(c, r);
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <circle cx={p.x} cy={p.y} r={7} fill={fill} stroke="#000" strokeWidth={1} />
-                    {label && (
-                      <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={10} fill="#000">
-                        {label}
-                      </text>
-                    )}
-                  </g>
-                );
-              })
-            )}
-            {/* 四隅ハンドル */}
-            {(Object.keys(corners) as (keyof Corners)[]).map((k) => {
-              const p = corners[k];
-              return (
-                <circle
-                  key={k}
-                  cx={p.x}
-                  cy={p.y}
-                  r={HANDLE_R}
-                  className="corner-handle"
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    setDragging(k);
-                  }}
-                />
-              );
-            })}
-          </svg>
-        )}
+
+        <svg
+          className="grid-overlay"
+          width={canvasSize.w}
+          height={canvasSize.h}
+          viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`}
+        >
+          {grids.map((grid) => {
+            const points = gridPoints.get(grid.id);
+            if (!points) return null;
+
+            const selected = grid.id === selectedGridId;
+
+            return (
+              <g
+                key={grid.id}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setSelectedGridId(grid.id);
+                }}
+              >
+                {points.map((rowPts, r) => (
+                  <polyline
+                    key={`row-${grid.id}-${r}`}
+                    points={rowPts.map((p) => `${p.x},${p.y}`).join(' ')}
+                    className="grid-line"
+                    style={{ opacity: selected ? 1 : 0.65 }}
+                  />
+                ))}
+
+                {Array.from({ length: grid.cols }).map((_, c) => (
+                  <polyline
+                    key={`col-${grid.id}-${c}`}
+                    points={points.map((rowPts) => `${rowPts[c].x},${rowPts[c].y}`).join(' ')}
+                    className="grid-line"
+                    style={{ opacity: selected ? 1 : 0.65 }}
+                  />
+                ))}
+
+                {points.map((rowPts, r) =>
+                  rowPts.map((p, c) => {
+                    const key = cellKey(grid.id, c, r);
+                    const ov = overrides.get(key);
+                    const sampled = previewColors.get(key);
+
+                    let fill = sampled
+                      ? `rgb(${sampled.r},${sampled.g},${sampled.b})`
+                      : 'rgba(255,255,255,0.6)';
+                    let label = '';
+
+                    if (ov === EMPTY) {
+                      fill = '#888';
+                      label = '空';
+                    } else if (ov === UNKNOWN) {
+                      fill = '#ff0';
+                      label = '?';
+                    }
+
+                    return (
+                      <g
+                        key={key}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cycleOverride(grid.id, c, r);
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <circle
+                          cx={p.x}
+                          cy={p.y}
+                          r={selected ? 7 : 6}
+                          fill={fill}
+                          stroke="#000"
+                          strokeWidth={selected ? 1 : 0.75}
+                        />
+                        {label && (
+                          <text
+                            x={p.x}
+                            y={p.y + 4}
+                            textAnchor="middle"
+                            fontSize={10}
+                            fill="#000"
+                          >
+                            {label}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })
+                )}
+
+                {(Object.keys(grid.corners) as (keyof Corners)[]).map((corner) => {
+                  const p = grid.corners[corner];
+
+                  return (
+                    <circle
+                      key={`${grid.id}-${corner}`}
+                      cx={p.x}
+                      cy={p.y}
+                      r={HANDLE_R}
+                      className="corner-handle"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        setSelectedGridId(grid.id);
+                        setDragging({ gridId: grid.id, corner });
+                      }}
+                    />
+                  );
+                })}
+              </g>
+            );
+          })}
+        </svg>
       </div>
 
       <div className="empty-tube-input">
@@ -346,7 +581,11 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             type="number"
             min={0}
             value={emptyTubeCount}
-            onChange={(e) => setEmptyTubeCount(Math.max(0, parseInt(e.target.value || '0', 10)))}
+            onChange={(e) =>
+              setEmptyTubeCount(
+                Math.max(0, parseInt(e.target.value || '0', 10))
+              )
+            }
           />
         </label>
       </div>
