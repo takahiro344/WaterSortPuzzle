@@ -75,8 +75,8 @@ src/
   paletteDisplay.ts    色ID→表示色の変換
   components/
     ImageUpload.tsx    画像選択（(1/3)）
-    GridEditor.tsx      グリッド調整・色取得（(2/3)）
-    SolutionViewer.tsx  解答ステップ表示（(3/3)）
+    GridEditor.tsx     グリッド調整・色取得（(2/3)）
+    SolutionViewer.tsx 解答ステップ表示（(3/3)）
   App.tsx              画面遷移の管理
   main.tsx             エントリポイント
 Dockerfile             マルチステージビルド（Vite build → nginx配信）
