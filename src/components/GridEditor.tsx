@@ -41,7 +41,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [color, setColor] = useState("#ff0000");
   const overridesRef = useRef(new Map<string, string>());
   const pointerStartRef = useRef(new Map<number, PointerStart>());
-  const syntheticReleaseRef = useRef(false);
 
   useEffect(() => {
     overridesRef.current.clear();
@@ -50,10 +49,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   }, [image]);
 
   useEffect(() => {
-    const findCell = (target: EventTarget | null): CellRef | null => {
-      const circle = target instanceof SVGCircleElement ? target : null;
-      if (!circle) return null;
-
+    const findCell = (circle: SVGCircleElement): CellRef | null => {
       const svg = circle.closest<SVGSVGElement>(".grid-overlay");
       if (!svg) return null;
 
@@ -67,10 +63,11 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         svg.querySelectorAll<SVGCircleElement>("circle"),
       ).filter((item) => Number(item.getAttribute("r")) === 10);
 
-      if (Number(circle.getAttribute("r")) === 10) {
+      const radius = Number(circle.getAttribute("r"));
+
+      if (radius === 10) {
         const index = hitCircles.indexOf(circle);
         if (index < 0) return null;
-
         const cols = Math.max(1, hitCircles.length / 4);
         return {
           grid,
@@ -79,22 +76,21 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         };
       }
 
-      // 四隅のハンドルは、実際にクリックされるのが
-      // class="corner-handle" の小さい円ではなく、その下にある
-      // r=14 の透明なヒット領域なので、r=14 をハンドルとして判定する。
-      if (Number(circle.getAttribute("r")) !== 14) return null;
+      if (radius !== 14) return null;
 
+      // r=14 は4隅の透明なドラッグ用ヒット領域。
+      // style属性に依存せず、半径だけで対象を特定する。
       const handles = Array.from(
-        svg.querySelectorAll<SVGCircleElement>("circle[style*='pointer-events']"),
+        svg.querySelectorAll<SVGCircleElement>("circle"),
       ).filter((item) => Number(item.getAttribute("r")) === 14);
       const index = handles.indexOf(circle);
       if (index < 0) return null;
 
-      const handleCount = handles.length;
-      if (handleCount === 2) {
+      if (handles.length === 2) {
         return { grid, col: 0, row: index === 0 ? 0 : 3 };
       }
-      const cols = hitCircles.length / 4;
+
+      const cols = Math.max(1, hitCircles.length / 4);
       const handleCells: CellRef[] = [
         { grid, col: 0, row: 0 },
         { grid, col: cols - 1, row: 0 },
@@ -125,7 +121,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       if (!cell) return;
 
       const radius = Number(circle.getAttribute("r"));
+
       if (radius === 10) {
+        // 通常の交点はクリックした時点で色選択UIを開く。
         event.preventDefault();
         event.stopImmediatePropagation();
         openPicker(cell);
@@ -133,6 +131,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       }
 
       if (radius === 14) {
+        // 4隅はここではUIを開かず、移動量を記録する。
+        // 実際に動いた場合はBase側のドラッグ処理をそのまま利用する。
         pointerStartRef.current.set(event.pointerId, {
           cell,
           clientX: event.clientX,
@@ -142,8 +142,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     };
 
     const onPointerUp = (event: PointerEvent) => {
-      if (syntheticReleaseRef.current) return;
-
       const start = pointerStartRef.current.get(event.pointerId);
       pointerStartRef.current.delete(event.pointerId);
       if (!start) return;
@@ -152,47 +150,15 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         event.clientX - start.clientX,
         event.clientY - start.clientY,
       );
+
+      // 20px以上ならドラッグ。Base側にpointerupを処理させる。
       if (moved > 20) return;
 
+      // 20px未満ならクリック。
+      // Base側のpointerupではcycleOverride()が実行されるため、
+      // それを止めて色選択UIだけを表示する。
       event.preventDefault();
       event.stopImmediatePropagation();
-
-      syntheticReleaseRef.current = true;
-      try {
-        const base = {
-          bubbles: true,
-          cancelable: true,
-          pointerId: event.pointerId,
-          pointerType: event.pointerType,
-          isPrimary: event.isPrimary,
-          buttons: 0,
-          clientX: event.clientX,
-          clientY: event.clientY,
-          screenX: event.screenX,
-          screenY: event.screenY,
-        };
-
-        window.dispatchEvent(
-          new PointerEvent("pointermove", {
-            ...base,
-            buttons: 1,
-            clientX: event.clientX + 21,
-            screenX: event.screenX + 21,
-          }),
-        );
-        window.dispatchEvent(
-          new PointerEvent("pointermove", {
-            ...base,
-            buttons: 1,
-            clientX: event.clientX,
-            screenX: event.screenX,
-          }),
-        );
-        window.dispatchEvent(new PointerEvent("pointerup", base));
-      } finally {
-        syntheticReleaseRef.current = false;
-      }
-
       openPicker(start.cell);
     };
 
