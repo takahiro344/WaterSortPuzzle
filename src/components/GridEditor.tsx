@@ -19,8 +19,10 @@ interface CellRef {
 
 interface PointerStart {
   cell: CellRef;
+  circle: SVGCircleElement;
   clientX: number;
   clientY: number;
+  dragging: boolean;
 }
 
 function hexToRgb(hex: string): RGB {
@@ -41,10 +43,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [color, setColor] = useState("#ff0000");
   const overridesRef = useRef(new Map<string, string>());
   const pointerStartRef = useRef(new Map<number, PointerStart>());
+  const delegatedPointerIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
     overridesRef.current.clear();
     pointerStartRef.current.clear();
+    delegatedPointerIdsRef.current.clear();
     setSelectedCell(null);
   }, [image]);
 
@@ -78,8 +82,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
       if (radius !== 14) return null;
 
-      // r=14 は4隅の透明なドラッグ用ヒット領域。
-      // style属性に依存せず、半径だけで対象を特定する。
       const handles = Array.from(
         svg.querySelectorAll<SVGCircleElement>("circle"),
       ).filter((item) => Number(item.getAttribute("r")) === 14);
@@ -113,7 +115,31 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       setSelectedCell(cell);
     };
 
+    const dispatchDragStart = (start: PointerStart, event: PointerEvent) => {
+      delegatedPointerIdsRef.current.add(event.pointerId);
+      start.dragging = true;
+
+      const syntheticDown = new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        isPrimary: event.isPrimary,
+        button: 0,
+        buttons: 1,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+      });
+
+      start.circle.dispatchEvent(syntheticDown);
+      delegatedPointerIdsRef.current.delete(event.pointerId);
+    };
+
     const onPointerDown = (event: PointerEvent) => {
+      if (delegatedPointerIdsRef.current.has(event.pointerId)) return;
+
       const circle = getCircle(event);
       if (!circle) return;
 
@@ -123,7 +149,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const radius = Number(circle.getAttribute("r"));
 
       if (radius === 10) {
-        // 通常の交点はクリックした時点で色選択UIを開く。
         event.preventDefault();
         event.stopImmediatePropagation();
         openPicker(cell);
@@ -131,14 +156,33 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       }
 
       if (radius === 14) {
-        // 4隅はここではUIを開かず、移動量を記録する。
-        // 実際に動いた場合はBase側のドラッグ処理をそのまま利用する。
+        // ここでBase側のpointerdownを止める。
+        // クリックだけならBaseのdragging状態自体を作らない。
+        event.preventDefault();
+        event.stopImmediatePropagation();
         pointerStartRef.current.set(event.pointerId, {
           cell,
+          circle,
           clientX: event.clientX,
           clientY: event.clientY,
+          dragging: false,
         });
       }
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const start = pointerStartRef.current.get(event.pointerId);
+      if (!start || start.dragging) return;
+
+      const moved = Math.hypot(
+        event.clientX - start.clientX,
+        event.clientY - start.clientY,
+      );
+      if (moved <= 20) return;
+
+      // 20pxを超えた時点で初めてBase側にドラッグを引き継ぐ。
+      // これにより、クリックではBase側のdragging状態が一切残らない。
+      dispatchDragStart(start, event);
     };
 
     const onPointerUp = (event: PointerEvent) => {
@@ -146,17 +190,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       pointerStartRef.current.delete(event.pointerId);
       if (!start) return;
 
-      const moved = Math.hypot(
-        event.clientX - start.clientX,
-        event.clientY - start.clientY,
-      );
+      if (start.dragging) {
+        // ドラッグとしてBase側に引き継いだ場合は、Base側のpointerupに任せる。
+        return;
+      }
 
-      // 20px以上ならドラッグ。Base側にpointerupを処理させる。
-      if (moved > 20) return;
-
-      // 20px未満ならクリック。
-      // Base側のpointerupではcycleOverride()が実行されるため、
-      // それを止めて色選択UIだけを表示する。
+      // クリックの場合はBase側にpointerupを渡さない。
       event.preventDefault();
       event.stopImmediatePropagation();
       openPicker(start.cell);
@@ -164,14 +203,17 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
     const onPointerCancel = (event: PointerEvent) => {
       pointerStartRef.current.delete(event.pointerId);
+      delegatedPointerIdsRef.current.delete(event.pointerId);
     };
 
     document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", onPointerUp, true);
     window.addEventListener("pointercancel", onPointerCancel, true);
 
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", onPointerCancel, true);
     };
