@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Move, RGB } from '../types';
 import { displayColorFor } from '../paletteDisplay';
 
@@ -16,10 +16,119 @@ function applyMoves(initial: number[][], moves: Move[], upTo: number): number[][
   for (let i = 0; i < upTo; i++) {
     const m = moves[i];
     for (let k = 0; k < m.amount; k++) {
-      tubes[m.to].push(tubes[m.from].pop() as number);
+      const color = tubes[m.from].pop();
+      if (color !== undefined) tubes[m.to].push(color);
     }
   }
   return tubes;
+}
+
+function drawSolution(
+  canvas: HTMLCanvasElement,
+  tubes: number[][],
+  capacity: number,
+  paletteRgb: (RGB | null)[],
+  currentMove: Move | null,
+  step: number,
+  moveCount: number,
+) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.min(Math.max(320, window.innerWidth - 48), 900);
+  const tubeWidth = 42;
+  const tubeGap = 18;
+  const rows = Math.ceil(tubes.length / Math.max(1, Math.floor((width + tubeGap) / (tubeWidth + tubeGap))));
+  const columns = Math.max(1, Math.min(tubes.length, Math.floor((width + tubeGap) / (tubeWidth + tubeGap))));
+  const rowHeight = capacity * 34 + 42;
+  const height = Math.max(150, rows * rowHeight + 20);
+
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const getX = (index: number) => {
+    const row = Math.floor(index / columns);
+    const col = index % columns;
+    const rowCount = Math.min(columns, tubes.length - row * columns);
+    const rowWidth = rowCount * tubeWidth + (rowCount - 1) * tubeGap;
+    return (width - rowWidth) / 2 + col * (tubeWidth + tubeGap);
+  };
+
+  const getY = (index: number) => Math.floor(index / columns) * rowHeight + 8;
+  const tubeHeight = capacity * 30;
+
+  for (let i = 0; i < tubes.length; i++) {
+    const x = getX(i);
+    const y = getY(i);
+    const isFrom = currentMove?.from === i;
+    const isTo = currentMove?.to === i;
+
+    ctx.save();
+    ctx.lineWidth = isFrom || isTo ? 4 : 2;
+    ctx.strokeStyle = isFrom ? '#e74c3c' : isTo ? '#27ae60' : '#333';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + tubeHeight - 12);
+    ctx.quadraticCurveTo(x, y + tubeHeight, x + 12, y + tubeHeight);
+    ctx.lineTo(x + tubeWidth - 12, y + tubeHeight);
+    ctx.quadraticCurveTo(x + tubeWidth, y + tubeHeight, x + tubeWidth, y + tubeHeight - 12);
+    ctx.lineTo(x + tubeWidth, y);
+    ctx.stroke();
+
+    const colors = tubes[i];
+    for (let level = 0; level < capacity; level++) {
+      const colorId = colors[level];
+      if (colorId === undefined) continue;
+      const rgb = paletteRgb[colorId] ?? null;
+      ctx.fillStyle = displayColorFor(colorId, rgb);
+      const slotY = y + tubeHeight - (level + 1) * 30;
+      ctx.fillRect(x + 2, slotY + 1, tubeWidth - 4, 28);
+    }
+
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#666';
+    ctx.textAlign = 'center';
+    ctx.fillText(`#${i + 1}`, x + tubeWidth / 2, y + tubeHeight + 17);
+    ctx.restore();
+  }
+
+  if (currentMove) {
+    const fromX = getX(currentMove.from) + tubeWidth / 2;
+    const fromY = getY(currentMove.from) - 2;
+    const toX = getX(currentMove.to) + tubeWidth / 2;
+    const toY = getY(currentMove.to) - 2;
+    const midX = (fromX + toX) / 2;
+    const arrowY = Math.max(4, Math.min(fromY, toY) - 2);
+
+    ctx.save();
+    ctx.strokeStyle = '#222';
+    ctx.fillStyle = '#222';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(fromX, arrowY + 8);
+    ctx.quadraticCurveTo(midX, arrowY - 18, toX, arrowY + 8);
+    ctx.stroke();
+    const angle = Math.atan2(arrowY + 8 - (arrowY - 1), toX - (toX - 8));
+    ctx.beginPath();
+    ctx.moveTo(toX, arrowY + 8);
+    ctx.lineTo(toX - 9 * Math.cos(angle - Math.PI / 6), arrowY + 8 - 9 * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(toX - 9 * Math.cos(angle + Math.PI / 6), arrowY + 8 - 9 * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#666';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${Math.min(step, moveCount)} / ${moveCount}`, width - 8, height - 4);
+  ctx.restore();
 }
 
 export const SolutionViewer: React.FC<Props> = ({
@@ -31,72 +140,50 @@ export const SolutionViewer: React.FC<Props> = ({
   onRestart,
 }) => {
   const [step, setStep] = useState(0);
-
-  const tubesNow = useMemo(() => applyMoves(initialTubes, moves, step), [initialTubes, moves, step]);
-
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tubesNow = applyMoves(initialTubes, moves, step);
   const currentMove = step < moves.length ? moves[step] : null;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const redraw = () => drawSolution(canvas, tubesNow, capacity, paletteRgb, currentMove, step, moves.length);
+    redraw();
+    window.addEventListener('resize', redraw);
+    return () => window.removeEventListener('resize', redraw);
+  }, [tubesNow, capacity, paletteRgb, currentMove, step, moves.length]);
 
   return (
     <div className="step-panel">
       <h2>(3/3) 解答</h2>
+
       {moves.length === 0 ? (
         <p>すでに揃っています。動かす手はありません。</p>
       ) : (
-        <p>
-          解けました。全 {moves.length} 手中 {Math.min(step, moves.length)} 手目まで表示しています。
-          [+] で次の手、[-] で前の手に戻れます。
-        </p>
+        <p>解けました。手順を表示しますので [+] ボタンで進めてください。</p>
       )}
 
-      <div className="tubes-view">
-        {tubesNow.map((tube, i) => {
-          const highlight = currentMove && (currentMove.from === i || currentMove.to === i);
-          return (
-            <div
-              key={i}
-              className={
-                'tube' + (highlight ? (currentMove!.from === i ? ' tube-from' : ' tube-to') : '')
-              }
-            >
-              <div className="tube-slots">
-                {Array.from({ length: capacity }).map((_, slotIdx) => {
-                  const levelFromTop = capacity - 1 - slotIdx; // 上から数えたスロット
-                  const colorId = tube[levelFromTop];
-                  const rgb = colorId !== undefined ? paletteRgb[colorId] ?? null : null;
-                  const bg = colorId !== undefined ? displayColorFor(colorId, rgb) : 'transparent';
-                  return <div key={slotIdx} className="tube-slot" style={{ background: bg }} />;
-                })}
-              </div>
-              <div className="tube-index">#{i + 1}</div>
-            </div>
-          );
-        })}
+      <div className="solution-canvas-wrapper">
+        <canvas ref={canvasRef} aria-label="Water Sort Puzzle の解答手順" />
       </div>
 
       {currentMove && (
         <p className="move-desc">
-          次の手: 試験管 #{currentMove.from + 1} → 試験管 #{currentMove.to + 1}
-          （{currentMove.amount} 個）
+          {currentMove.from + 1} → {currentMove.to + 1}
         </p>
       )}
 
-      <div className="button-row">
-        <button onClick={() => setStep(0)} disabled={step === 0}>
-          ▲ 最初
-        </button>
-        <button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
-          - 戻る
-        </button>
-        <button
-          onClick={() => setStep((s) => Math.min(moves.length, s + 1))}
-          disabled={step >= moves.length}
-        >
-          + 進む
-        </button>
-        <button onClick={() => setStep(moves.length)} disabled={step >= moves.length}>
-          ▼ 最後
-        </button>
-      </div>
+      {moves.length > 0 && (
+        <div className="solution-controls">
+          <button
+            className="solution-next-button"
+            onClick={() => setStep((s) => Math.min(moves.length, s + 1))}
+            disabled={step >= moves.length}
+          >
+            +
+          </button>
+        </div>
+      )}
 
       <div className="button-row">
         <button onClick={onBack}>戻る</button>
