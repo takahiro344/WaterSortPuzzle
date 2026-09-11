@@ -36,11 +36,13 @@ function drawSolution(
   if (!ctx) return;
 
   const dpr = window.devicePixelRatio || 1;
-  const width = Math.min(Math.max(320, window.innerWidth - 48), 900);
   const tubeWidth = 42;
   const tubeGap = 18;
-  const rows = Math.ceil(tubes.length / Math.max(1, Math.floor((width + tubeGap) / (tubeWidth + tubeGap))));
-  const columns = Math.max(1, Math.min(tubes.length, Math.floor((width + tubeGap) / (tubeWidth + tubeGap))));
+  // 横に並べきれず1行が長くなりすぎないよう、常に最大2段（2行）に分けて配置する。
+  const columns = Math.max(1, Math.ceil(tubes.length / 2));
+  const rows = Math.max(1, Math.ceil(tubes.length / columns));
+  const contentWidth = columns * tubeWidth + (columns - 1) * tubeGap;
+  const width = Math.max(320, contentWidth + 16);
   const rowHeight = capacity * 34 + 42;
   const height = Math.max(150, rows * rowHeight + 20);
 
@@ -99,25 +101,31 @@ function drawSolution(
 
   if (currentMove) {
     const fromX = getX(currentMove.from) + tubeWidth / 2;
-    const fromY = getY(currentMove.from) - 2;
     const toX = getX(currentMove.to) + tubeWidth / 2;
-    const toY = getY(currentMove.to) - 2;
+    // 段（行）ごとに試験管のY座標が異なるため、開始・終了それぞれの試験管の
+    // 実際の位置を使って矢印を描く（以前は両端を同じ高さに固定していたため、
+    // 別の段への移動で矢印がずれて見えていた）。
+    const fromTopY = getY(currentMove.from) - 2;
+    const toTopY = getY(currentMove.to) - 2;
+    const startY = fromTopY + 8;
+    const endY = toTopY + 8;
     const midX = (fromX + toX) / 2;
-    const arrowY = Math.max(4, Math.min(fromY, toY) - 2);
+    const controlY = Math.max(4, Math.min(fromTopY, toTopY) - 18);
 
     ctx.save();
     ctx.strokeStyle = '#222';
     ctx.fillStyle = '#222';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(fromX, arrowY + 8);
-    ctx.quadraticCurveTo(midX, arrowY - 18, toX, arrowY + 8);
+    ctx.moveTo(fromX, startY);
+    ctx.quadraticCurveTo(midX, controlY, toX, endY);
     ctx.stroke();
-    const angle = Math.atan2(arrowY + 8 - (arrowY - 1), toX - (toX - 8));
+    // 矢じりの向きは、曲線の終点における実際の接線方向（制御点→終点）から求める。
+    const angle = Math.atan2(endY - controlY, toX - midX);
     ctx.beginPath();
-    ctx.moveTo(toX, arrowY + 8);
-    ctx.lineTo(toX - 9 * Math.cos(angle - Math.PI / 6), arrowY + 8 - 9 * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(toX - 9 * Math.cos(angle + Math.PI / 6), arrowY + 8 - 9 * Math.sin(angle + Math.PI / 6));
+    ctx.moveTo(toX, endY);
+    ctx.lineTo(toX - 9 * Math.cos(angle - Math.PI / 6), endY - 9 * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(toX - 9 * Math.cos(angle + Math.PI / 6), endY - 9 * Math.sin(angle + Math.PI / 6));
     ctx.closePath();
     ctx.fill();
     ctx.restore();
