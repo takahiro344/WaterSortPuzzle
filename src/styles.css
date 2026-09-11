@@ -37,12 +37,14 @@ body {
   padding: 16px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
   margin-bottom: 16px;
+  text-align: center;
 }
 
 .instructions {
   font-size: 0.9rem;
   color: #444;
   padding-left: 1.2em;
+  text-align: left;
 }
 
 .dropzone {
@@ -62,6 +64,7 @@ body {
 .note {
   font-size: 0.8rem;
   color: #888;
+  text-align: center;
 }
 
 .grid-controls {
@@ -114,6 +117,7 @@ body {
 .empty-tube-input {
   margin-bottom: 12px;
   font-size: 0.95rem;
+  text-align: center;
 }
 
 .empty-tube-input input {
@@ -126,6 +130,7 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: center;
   margin-top: 8px;
 }
 
@@ -169,6 +174,7 @@ button:disabled {
   padding: 10px 14px;
   margin-bottom: 12px;
   font-size: 0.9rem;
+  text-align: center;
 }
 
 .solution-canvas-wrapper {
