@@ -538,36 +538,34 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                 {selected &&
                   (grid.cols === 1 ? (
                     <>
-                      {(["topCenter", "bottomCenter"] as Handle[]).map(
-                        (handle) => {
-                          const p =
-                            handle === "topCenter"
-                              ? bilinear(grid.corners, 0.5, 0)
-                              : bilinear(grid.corners, 0.5, 1);
-                          return (
-                            <circle
-                              key={handle}
-                              className="corner-handle"
-                              cx={p.x}
-                              cy={p.y}
-                              r={HANDLE_R}
-                              fill="none"
-                              stroke="#00ffff"
-                              strokeWidth={1.5}
-                              onPointerDown={(e) => {
-                                e.stopPropagation();
-                                setDragging({
-                                  gridId: grid.id,
-                                  corner: handle,
-                                  startX: p.x,
-                                  startY: p.y,
-                                  startCorners: { ...grid.corners },
-                                });
-                              }}
-                            />
-                          );
-                        },
-                      )}
+                      {["topCenter", "bottomCenter"].map((handle) => {
+                        const p =
+                          handle === "topCenter"
+                            ? bilinear(grid.corners, 0.5, 0)
+                            : bilinear(grid.corners, 0.5, 1);
+                        return (
+                          <circle
+                            key={handle}
+                            className="corner-handle"
+                            cx={p.x}
+                            cy={p.y}
+                            r={HANDLE_R}
+                            fill="transparent"
+                            stroke="transparent"
+                            strokeWidth={1.5}
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              setDragging({
+                                gridId: grid.id,
+                                corner: handle as Handle,
+                                startX: p.x,
+                                startY: p.y,
+                                startCorners: { ...grid.corners },
+                              });
+                            }}
+                          />
+                        );
+                      })}
                     </>
                   ) : (
                     <>
@@ -580,8 +578,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                           cx={p.x}
                           cy={p.y}
                           r={HANDLE_R}
-                          fill="none"
-                          stroke="#00ffff"
+                          fill="transparent"
+                          stroke="transparent"
                           strokeWidth={1.5}
                           onPointerDown={(e) => {
                             e.stopPropagation();
