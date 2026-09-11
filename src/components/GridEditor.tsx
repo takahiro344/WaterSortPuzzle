@@ -30,6 +30,7 @@ interface Props {
 }
 
 const GRID_HEIGHT = 100;
+const INITIAL_GRID_COLS = 6;
 
 const HANDLE_R = 4.2;
 const SAMPLE_RADIUS = 4;
@@ -153,7 +154,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(image, 0, 0, w, h);
-    setGrids([{ id: 0, cols: 8, corners: initialCorners(w, h) }]);
+    setGrids([
+      { id: 0, cols: INITIAL_GRID_COLS, corners: initialCorners(w, h) },
+    ]);
     setSelectedGridId(0);
     setNextGridId(1);
     setOverrides(new Map());
@@ -390,7 +393,11 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   };
   const handleResetGrid = () => {
     setGrids([
-      { id: 0, cols: 8, corners: initialCorners(canvasSize.w, canvasSize.h) },
+      {
+        id: 0,
+        cols: INITIAL_GRID_COLS,
+        corners: initialCorners(canvasSize.w, canvasSize.h),
+      },
     ]);
     setSelectedGridId(0);
     setNextGridId(1);
