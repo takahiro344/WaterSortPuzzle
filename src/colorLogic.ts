@@ -155,6 +155,6 @@ export function inferUnknownColor(
   return {
     ok: true,
     inferredColor: short[0],
-    message: `他の色の出現数から、不明セルは色 ${short[0]} と推測しました。`,
+    message: "他の色の出現数から、不明セルの色を推測しました。",
   };
 }
