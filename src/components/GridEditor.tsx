@@ -48,27 +48,67 @@ function sampleColorAt(
   x: number,
   y: number,
 ): RGB {
+  // The grid intersection does not have to be exactly at the center of the
+  // water. On phones especially, a few pixels of error are unavoidable.
+  // Sample several small areas around the requested point and prefer the
+  // most "water-like" one. This makes the color recognition tolerant of
+  // small grid-position errors without changing the visible grid itself.
+  const candidates = [
+    [0, 0],
+    [-5, 0],
+    [5, 0],
+    [0, -5],
+    [0, 5],
+    [-4, -4],
+    [4, -4],
+    [-4, 4],
+    [4, 4],
+  ];
   const size = SAMPLE_RADIUS * 2 + 1;
-  const sx = Math.min(
-    Math.max(0, Math.round(x - SAMPLE_RADIUS)),
-    Math.max(0, ctx.canvas.width - size),
-  );
-  const sy = Math.min(
-    Math.max(0, Math.round(y - SAMPLE_RADIUS)),
-    Math.max(0, ctx.canvas.height - size),
-  );
-  const data = ctx.getImageData(sx, sy, size, size).data;
-  let r = 0,
-    g = 0,
-    b = 0,
-    n = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    r += data[i];
-    g += data[i + 1];
-    b += data[i + 2];
-    n++;
+
+  const sample = (cx: number, cy: number) => {
+    const sx = Math.min(
+      Math.max(0, Math.round(cx - SAMPLE_RADIUS)),
+      Math.max(0, ctx.canvas.width - size),
+    );
+    const sy = Math.min(
+      Math.max(0, Math.round(cy - SAMPLE_RADIUS)),
+      Math.max(0, ctx.canvas.height - size),
+    );
+    const data = ctx.getImageData(sx, sy, size, size).data;
+    let r = 0,
+      g = 0,
+      b = 0,
+      n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      n++;
+    }
+    const rgb = {
+      r: Math.round(r / n),
+      g: Math.round(g / n),
+      b: Math.round(b / n),
+    };
+    const max = Math.max(rgb.r, rgb.g, rgb.b);
+    const min = Math.min(rgb.r, rgb.g, rgb.b);
+    return { rgb, chroma: max - min };
+  };
+
+  const samples = candidates.map(([dx, dy]) => sample(x + dx, y + dy));
+  const center = samples[0];
+
+  // If the center is already sufficiently colorful, keep it. Otherwise use
+  // the nearby area with the strongest chroma. For empty/white areas all
+  // candidates have little chroma, so the original center sample is kept.
+  if (center.chroma >= 18) return center.rgb;
+
+  let best = center;
+  for (const candidate of samples.slice(1)) {
+    if (candidate.chroma > best.chroma) best = candidate;
   }
-  return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
+  return best.rgb;
 }
 function initialCorners(w: number, h: number): Corners {
   const gridW = w * 0.5,
