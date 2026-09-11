@@ -15,7 +15,6 @@ interface CellRef {
   grid: number;
   col: number;
   row: number;
-  hex: string;
 }
 
 function hexToRgb(hex: string): RGB {
@@ -31,12 +30,6 @@ function rgbDistance(a: RGB, b: RGB): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
-function rgbToHex(rgb: RGB): string {
-  return `#${[rgb.r, rgb.g, rgb.b]
-    .map((v) => v.toString(16).padStart(2, "0"))
-    .join("")}`;
-}
-
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [selectedCell, setSelectedCell] = useState<CellRef | null>(null);
   const [color, setColor] = useState("#ff0000");
@@ -48,38 +41,44 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   }, [image]);
 
   useEffect(() => {
-    const getCells = () =>
-      Array.from(document.querySelectorAll<SVGSVGElement>(".grid-overlay"));
-
     const findCell = (target: EventTarget | null): CellRef | null => {
+      const path = target instanceof EventTarget ? [] : [];
+      void path;
       const circle = target instanceof SVGCircleElement ? target : null;
       if (!circle || Number(circle.getAttribute("r")) !== 10) return null;
+
       const svg = circle.closest<SVGSVGElement>(".grid-overlay");
       if (!svg) return null;
-      const grid = getCells().indexOf(svg);
+
+      const grids = Array.from(
+        document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
+      );
+      const grid = grids.indexOf(svg);
       if (grid < 0) return null;
+
       const hitCircles = Array.from(
         svg.querySelectorAll<SVGCircleElement>("circle"),
       ).filter((item) => Number(item.getAttribute("r")) === 10);
       const index = hitCircles.indexOf(circle);
       if (index < 0) return null;
+
       const cols = Math.max(1, hitCircles.length / 4);
-      const col = index % cols;
-      const row = Math.floor(index / cols);
-      const key = `${grid}-${col}-${row}`;
       return {
         grid,
-        col,
-        row,
-        hex: overridesRef.current.get(key) ?? "#ff0000",
+        col: index % cols,
+        row: Math.floor(index / cols),
       };
     };
 
     const onPointerDown = (event: PointerEvent) => {
       const cell = findCell(event.target);
       if (!cell) return;
+
+      // GridEditorBase の「自動→空→不明」の切り替え処理を止め、
+      // このコンポーネントの色選択UIだけを開く。
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
+
       const key = `${cell.grid}-${cell.col}-${cell.row}`;
       setColor(overridesRef.current.get(key) ?? "#ff0000");
       setSelectedCell(cell);
@@ -93,22 +92,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     if (!selectedCell) return;
     const key = `${selectedCell.grid}-${selectedCell.col}-${selectedCell.row}`;
     overridesRef.current.set(key, color);
-    const svg = document.querySelectorAll<SVGSVGElement>(".grid-overlay")[
-      selectedCell.grid
-    ];
-    const hitCircles = svg
-      ? Array.from(svg.querySelectorAll<SVGCircleElement>("circle")).filter(
-          (item) => Number(item.getAttribute("r")) === 10,
-        )
-      : [];
-    const circle = hitCircles[selectedCell.row * (hitCircles.length / 4) + selectedCell.col];
-    const visible = circle?.parentElement?.querySelector<SVGCircleElement>(
-      `circle[r="4.2"]`,
-    );
-    if (visible) {
-      visible.setAttribute("fill", color);
-      visible.setAttribute("stroke", "#fff");
-    }
     setSelectedCell(null);
   };
 
@@ -127,22 +110,26 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
     const tubes = result.tubes.map((tube) => [...tube]);
     const palette = [...result.paletteRgb];
-    const grids = Array.from(document.querySelectorAll<SVGSVGElement>(".grid-overlay"));
+    const grids = Array.from(
+      document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
+    );
     let tubeOffset = 0;
 
     grids.forEach((svg, gridIndex) => {
-      const hitCircles = Array.from(svg.querySelectorAll<SVGCircleElement>("circle")).filter(
-        (item) => Number(item.getAttribute("r")) === 10,
-      );
+      const hitCircles = Array.from(
+        svg.querySelectorAll<SVGCircleElement>("circle"),
+      ).filter((item) => Number(item.getAttribute("r")) === 10);
       const cols = Math.max(1, hitCircles.length / 4);
 
       for (let col = 0; col < cols; col++) {
         const tubeIndex = tubeOffset + col;
         if (!tubes[tubeIndex]) continue;
+
         for (let row = 0; row < 4; row++) {
           const key = `${gridIndex}-${col}-${row}`;
           const hex = overridesRef.current.get(key);
           if (!hex) continue;
+
           const rgb = hexToRgb(hex);
           let paletteIndex = palette.findIndex(
             (candidate) => candidate && rgbDistance(candidate, rgb) < 1,
@@ -151,6 +138,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             paletteIndex = palette.length;
             palette.push(rgb);
           }
+
           const position = 3 - row;
           if (position < tubes[tubeIndex].length) {
             tubes[tubeIndex][position] = paletteIndex;
