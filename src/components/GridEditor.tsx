@@ -32,7 +32,7 @@ interface Props {
 const HANDLE_R = 3.5;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
-const DRAG_THRESHOLD = 3;
+const DRAG_THRESHOLD = 12;
 const HANDLE_HIT_R = 14;
 const CELL_HIT_R = 10;
 type Handle = keyof Corners | "topCenter" | "bottomCenter";
