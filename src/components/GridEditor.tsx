@@ -16,8 +16,10 @@ function lerp(a: Point, b: Point, t: number): Point { return { x: a.x + (b.x - a
 function bilinear(corners: Corners, u: number, v: number): Point { return lerp(lerp(corners.tl, corners.tr, u), lerp(corners.bl, corners.br, u), v); }
 function sampleColorAt(ctx: CanvasRenderingContext2D, x: number, y: number): RGB {
   const size = SAMPLE_RADIUS * 2 + 1;
-  const sx = Math.max(0, Math.round(x - SAMPLE_RADIUS));
-  const sy = Math.max(0, Math.round(y - SAMPLE_RADIUS));
+  const maxX = Math.max(0, ctx.canvas.width - size);
+  const maxY = Math.max(0, ctx.canvas.height - size);
+  const sx = Math.min(Math.max(0, Math.round(x - SAMPLE_RADIUS)), maxX);
+  const sy = Math.min(Math.max(0, Math.round(y - SAMPLE_RADIUS)), maxY);
   const data = ctx.getImageData(sx, sy, size, size).data;
   let r = 0, g = 0, b = 0, n = 0;
   for (let i = 0; i < data.length; i += 4) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
@@ -76,8 +78,10 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const onMove = (e: PointerEvent) => {
       const wrapper = wrapperRef.current; if (!wrapper) return;
       const rect = wrapper.getBoundingClientRect();
-      const x = Math.min(Math.max(e.clientX - rect.left, 0), canvasSize.w);
-      const y = Math.min(Math.max(e.clientY - rect.top, 0), canvasSize.h);
+      const scaleX = rect.width > 0 ? canvasSize.w / rect.width : 1;
+      const scaleY = rect.height > 0 ? canvasSize.h / rect.height : 1;
+      const x = Math.min(Math.max((e.clientX - rect.left) * scaleX, 0), canvasSize.w);
+      const y = Math.min(Math.max((e.clientY - rect.top) * scaleY, 0), canvasSize.h);
       setGrids(prev => prev.map(grid => grid.id === dragging.gridId ? { ...grid, corners: { ...grid.corners, [dragging.corner]: { x, y } } } : grid));
     };
     const onUp = () => setDragging(null);
@@ -115,14 +119,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     if (!canvasSize.w || !canvasSize.h) return;
     const selected = grids.find(g => g.id === selectedGridId) ?? grids[grids.length - 1]; if (!selected) return;
     const id = nextGridId, offset = Math.max(20, canvasSize.h * 0.08);
-    const height = Math.abs(selected.corners.bl.y - selected.corners.tl.y);
     const shiftY = selected.corners.bl.y + offset > canvasSize.h ? -offset : offset;
     const clampY = (y: number) => Math.max(0, Math.min(canvasSize.h, y));
     const shifted = {
       tl: { x: selected.corners.tl.x, y: clampY(selected.corners.tl.y + shiftY) }, tr: { x: selected.corners.tr.x, y: clampY(selected.corners.tr.y + shiftY) },
       bl: { x: selected.corners.bl.x, y: clampY(selected.corners.bl.y + shiftY) }, br: { x: selected.corners.br.x, y: clampY(selected.corners.br.y + shiftY) }
     };
-    void height;
     setGrids(prev => [...prev, { id, cols: selected.cols, corners: shifted }]); setSelectedGridId(id); setNextGridId(v => v + 1);
   };
 
@@ -159,9 +161,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       <canvas ref={canvasRef} />
       {grids.map(grid => { const points = gridPoints.get(grid.id); if (!points) return null; const selected = grid.id === selectedGridId; return <React.Fragment key={grid.id}>
         <svg className="grid-overlay" width={canvasSize.w} height={canvasSize.h} onPointerDown={() => setSelectedGridId(grid.id)}>
+          {points.map((row, r) => <line key={`h-${grid.id}-${r}`} className="grid-line" x1={row[0].x} y1={row[0].y} x2={row[row.length - 1].x} y2={row[row.length - 1].y} />)}
+          {points[0]?.map((_, c) => <line key={`v-${grid.id}-${c}`} className="grid-line" x1={points[0][c].x} y1={points[0][c].y} x2={points[points.length - 1][c].x} y2={points[points.length - 1][c].y} />)}
           {points.map((row, r) => row.map((p, c) => { const key = cellKey(grid.id, c, r), value = overrides.get(key) ?? AUTO, preview = previewColors.get(key); const fill = value === EMPTY ? 'transparent' : value === UNKNOWN ? '#fff' : preview ? `rgb(${preview.r}, ${preview.g}, ${preview.b})` : 'transparent'; return <circle key={key} cx={p.x} cy={p.y} r={7} fill={fill} stroke={value === UNKNOWN ? '#000' : selected ? '#fff' : '#888'} strokeWidth={2} onPointerDown={e => { e.stopPropagation(); cycleOverride(grid.id, c, r); }}/>; }))}
-          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={3} onPointerDown={e => { e.stopPropagation(); setDragging({ gridId: grid.id, corner }); }}/>)}</>}
-        </svg></React.Fragment>; })}
+          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={3} onPointerDown={e => { e.stopPropagation(); setDragging({ gridId: grid.id, corner }); }}/>)}</>}
+        </svg>
+      </React.Fragment>; })}
     </div>
     {errorMsg && <div className="error-message">{errorMsg}</div>}
     <div className="step-actions"><button onClick={onBack}>戻る</button><button className="primary" onClick={handleSolveClick}>解く</button></div>
