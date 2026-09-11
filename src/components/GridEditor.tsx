@@ -17,6 +17,12 @@ interface CellRef {
   row: number;
 }
 
+interface PointerStart {
+  cell: CellRef;
+  clientX: number;
+  clientY: number;
+}
+
 function hexToRgb(hex: string): RGB {
   const value = hex.replace("#", "");
   return {
@@ -34,16 +40,19 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [selectedCell, setSelectedCell] = useState<CellRef | null>(null);
   const [color, setColor] = useState("#ff0000");
   const overridesRef = useRef(new Map<string, string>());
+  const pointerStartRef = useRef(new Map<number, PointerStart>());
+  const syntheticReleaseRef = useRef(false);
 
   useEffect(() => {
     overridesRef.current.clear();
+    pointerStartRef.current.clear();
     setSelectedCell(null);
   }, [image]);
 
   useEffect(() => {
     const findCell = (target: EventTarget | null): CellRef | null => {
       const circle = target instanceof SVGCircleElement ? target : null;
-      if (!circle || Number(circle.getAttribute("r")) !== 10) return null;
+      if (!circle) return null;
 
       const svg = circle.closest<SVGSVGElement>(".grid-overlay");
       if (!svg) return null;
@@ -57,33 +66,155 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const hitCircles = Array.from(
         svg.querySelectorAll<SVGCircleElement>("circle"),
       ).filter((item) => Number(item.getAttribute("r")) === 10);
-      const index = hitCircles.indexOf(circle);
+
+      if (Number(circle.getAttribute("r")) === 10) {
+        const index = hitCircles.indexOf(circle);
+        if (index < 0) return null;
+
+        const cols = Math.max(1, hitCircles.length / 4);
+        return {
+          grid,
+          col: index % cols,
+          row: Math.floor(index / cols),
+        };
+      }
+
+      if (!circle.classList.contains("corner-handle")) return null;
+
+      const handles = Array.from(
+        svg.querySelectorAll<SVGCircleElement>("circle.corner-handle"),
+      );
+      const index = handles.indexOf(circle);
       if (index < 0) return null;
 
-      const cols = Math.max(1, hitCircles.length / 4);
-      return {
-        grid,
-        col: index % cols,
-        row: Math.floor(index / cols),
-      };
+      // GridEditorBase のハンドル描画順:
+      // cols=1 は topCenter / bottomCenter、通常は tl / tr / bl / br。
+      const handleCount = handles.length;
+      if (handleCount === 2) {
+        return { grid, col: 0, row: index === 0 ? 0 : 3 };
+      }
+      const handleCells: CellRef[] = [
+        { grid, col: 0, row: 0 },
+        { grid, col: hitCircles.length / 4 - 1, row: 0 },
+        { grid, col: 0, row: 3 },
+        { grid, col: hitCircles.length / 4 - 1, row: 3 },
+      ];
+      return handleCells[index] ?? null;
     };
 
-    const onPointerDown = (event: PointerEvent) => {
-      const cell = findCell(event.target);
-      if (!cell) return;
+    const getCircle = (event: Event): SVGCircleElement | null => {
+      for (const target of event.composedPath()) {
+        if (target instanceof SVGCircleElement) return target;
+      }
+      return null;
+    };
 
-      // GridEditorBase の「自動→空→不明」の切り替え処理を止め、
-      // このコンポーネントの色選択UIだけを開く。
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
+    const openPicker = (cell: CellRef) => {
       const key = `${cell.grid}-${cell.col}-${cell.row}`;
       setColor(overridesRef.current.get(key) ?? "#ff0000");
       setSelectedCell(cell);
     };
 
+    const onPointerDown = (event: PointerEvent) => {
+      const circle = getCircle(event);
+      if (!circle) return;
+
+      const cell = findCell(circle);
+      if (!cell) return;
+
+      const radius = Number(circle.getAttribute("r"));
+      if (radius === 10) {
+        // 通常の交点はここで BaseGridEditor の状態切り替えを止める。
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openPicker(cell);
+        return;
+      }
+
+      if (circle.classList.contains("corner-handle")) {
+        // ハンドルはドラッグを BaseGridEditor に任せる。
+        // pointerup 時に移動量を確認し、タップだけ色選択UIに切り替える。
+        pointerStartRef.current.set(event.pointerId, {
+          cell,
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+      }
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (syntheticReleaseRef.current) return;
+
+      const start = pointerStartRef.current.get(event.pointerId);
+      pointerStartRef.current.delete(event.pointerId);
+      if (!start) return;
+
+      const moved = Math.hypot(
+        event.clientX - start.clientX,
+        event.clientY - start.clientY,
+      );
+      if (moved > 20) return;
+
+      // BaseGridEditor は window の pointerup で、ハンドルのタップを
+      // 「自動→空→不明」に切り替える処理として扱っている。
+      // タップ時だけ、その処理を実行させずにドラッグ状態を正常終了させる。
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      syntheticReleaseRef.current = true;
+      try {
+        const base = {
+          bubbles: true,
+          cancelable: true,
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          isPrimary: event.isPrimary,
+          buttons: 0,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+        };
+
+        // BaseGridEditor の dragMovedRef を true にしてから元位置へ戻す。
+        // これにより、実際のグリッド位置は変えずに cycleOverride だけを回避する。
+        window.dispatchEvent(
+          new PointerEvent("pointermove", {
+            ...base,
+            buttons: 1,
+            clientX: event.clientX + 21,
+            screenX: event.screenX + 21,
+          }),
+        );
+        window.dispatchEvent(
+          new PointerEvent("pointermove", {
+            ...base,
+            buttons: 1,
+            clientX: event.clientX,
+            screenX: event.screenX,
+          }),
+        );
+        window.dispatchEvent(new PointerEvent("pointerup", base));
+      } finally {
+        syntheticReleaseRef.current = false;
+      }
+
+      openPicker(start.cell);
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      pointerStartRef.current.delete(event.pointerId);
+    };
+
     document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerCancel, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerCancel, true);
+    };
   }, []);
 
   const applyColor = () => {
