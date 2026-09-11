@@ -29,7 +29,7 @@ interface Props {
   onConfirm: (result: GridConfirmResult) => void;
 }
 
-const HANDLE_R = 3.5;
+const HANDLE_R = 4.2;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
 const DRAG_THRESHOLD = 20;
@@ -624,7 +624,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                         <circle
                           cx={p.x}
                           cy={p.y}
-                          r={3.5}
+                          r={HANDLE_R}
                           fill={fill}
                           stroke={
                             value === UNKNOWN
