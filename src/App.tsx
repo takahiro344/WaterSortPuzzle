@@ -13,6 +13,7 @@ interface ResultData {
   paletteRgb: (RGB | null)[];
   moves: Move[];
   warnings: string[];
+  inferredColorRgb: RGB | null;
   solvable: boolean;
   message?: string;
 }
@@ -30,7 +31,6 @@ export const App: React.FC = () => {
 
   const handleGridConfirm = async (data: GridConfirmResult) => {
     setSolving(true);
-    // UIをブロックしないよう次のフレームで実行
     await new Promise((r) => setTimeout(r, 30));
     const solveResult = solve({ tubes: data.tubes, capacity: data.capacity });
     setResult({
@@ -39,6 +39,7 @@ export const App: React.FC = () => {
       paletteRgb: data.paletteRgb,
       moves: solveResult.moves,
       warnings: data.warnings,
+      inferredColorRgb: data.inferredColorRgb,
       solvable: solveResult.solvable,
       message: solveResult.message,
     });
@@ -64,11 +65,7 @@ export const App: React.FC = () => {
       {step === "upload" && <ImageUpload onImageLoaded={handleImageLoaded} />}
 
       {step === "grid" && image && (
-        <GridEditor
-          image={image}
-          onBack={restart}
-          onConfirm={handleGridConfirm}
-        />
+        <GridEditor image={image} onBack={restart} onConfirm={handleGridConfirm} />
       )}
 
       {solving && (
@@ -82,7 +79,25 @@ export const App: React.FC = () => {
           {result.warnings.length > 0 && (
             <div className="warning-box">
               {result.warnings.map((w, i) => (
-                <p key={i}>💡 {w}</p>
+                <p key={i}>
+                  💡 {w}
+                  {i === 0 && result.inferredColorRgb && (
+                    <span
+                      aria-label="推測した色"
+                      title="推測した色"
+                      style={{
+                        display: "inline-block",
+                        width: 18,
+                        height: 18,
+                        marginLeft: 8,
+                        verticalAlign: "middle",
+                        borderRadius: "50%",
+                        backgroundColor: `rgb(${result.inferredColorRgb.r}, ${result.inferredColorRgb.g}, ${result.inferredColorRgb.b})`,
+                        border: "1px solid #666",
+                      }}
+                    />
+                  )}
+                </p>
               ))}
             </div>
           )}
@@ -118,11 +133,7 @@ export const App: React.FC = () => {
       <footer className="app-footer">
         <p>
           画像はブラウザ内でのみ処理され、サーバーへは送信されません。オリジナルサイト（
-          <a
-            href="https://baclips.com/solve-water-sort-puzzle/"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a href="https://baclips.com/solve-water-sort-puzzle/" target="_blank" rel="noreferrer">
             baclips.com
           </a>
           ）の仕様をベースに、色が1つだけ不明でも解けるよう拡張した非公式版です。
