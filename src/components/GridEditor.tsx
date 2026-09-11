@@ -162,12 +162,18 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const handleSolveClick = () => {
     setErrorMsg(null); const canvas = canvasRef.current, ctx = canvas?.getContext('2d'); if (!canvas || !ctx || !grids.length) return;
     const cells: GridCell[] = [];
-    for (const grid of grids) { const points = gridPoints.get(grid.id); if (!points) continue; for (let r = 0; r < CAPACITY; r++) for (let c = 0; c < grid.cols; c++) { const pt = points[r][c], key = cellKey(grid.id, c, r); cells.push({ col: c, row: r, x: pt.x, y: pt.y, rgb: sampleColorAt(ctx, pt.x, pt.y), value: overrides.get(key) ?? AUTO }); } }
+    for (const grid of grids) { const points = gridPoints.get(grid.id); if (!points) continue; for (let r = 0; r < CAPACITY; r++) for (let c = 0; c < grid.cols; c++) { const pt = points[r][c], key = cellKey(grid.id, c, r); cells.push({ gridId: grid.id, col: c, row: r, x: pt.x, y: pt.y, rgb: sampleColorAt(ctx, pt.x, pt.y), value: overrides.get(key) ?? AUTO }); } }
     const { palette, assignedCells } = clusterColors(cells), flatValues = assignedCells.map(c => c.value), inference = inferUnknownColor(flatValues, CAPACITY); const warnings: string[] = [];
     let resolvedValues = assignedCells;
     if (flatValues.includes(UNKNOWN)) { if (!inference.ok || inference.inferredColor === null) { setErrorMsg(inference.message); return; } warnings.push(inference.message); resolvedValues = assignedCells.map(c => c.value === UNKNOWN ? { ...c, value: inference.inferredColor as number } : c); }
-    const tubes: number[][] = []; let cellIndex = 0;
-    for (const grid of grids) for (let c = 0; c < grid.cols; c++) { const tube: number[] = []; for (let r = CAPACITY - 1; r >= 0; r--) { const cell = resolvedValues[cellIndex++]; if (cell && cell.value !== EMPTY) tube.push(cell.value); } tubes.push(tube); }
+    // 配列の格納順に頼らず、(gridId, col, row) をキーにして値を引けるようにする。
+    // ※以前はセル収集ループ（行→列の順）と試験管組み立てループ（列→行の順）の並び順が
+    //   食い違ったまま配列を順番に読み出していたため、複数列のグリッドで色がずれて
+    //   割り当てられるバグがあった。
+    const valueByCell = new Map<string, number>();
+    for (const cell of resolvedValues) valueByCell.set(`${cell.gridId}-${cell.col}-${cell.row}`, cell.value);
+    const tubes: number[][] = [];
+    for (const grid of grids) for (let c = 0; c < grid.cols; c++) { const tube: number[] = []; for (let r = CAPACITY - 1; r >= 0; r--) { const value = valueByCell.get(`${grid.id}-${c}-${r}`); if (value !== undefined && value !== EMPTY) tube.push(value); } tubes.push(tube); }
     for (let i = 0; i < emptyTubeCount; i++) tubes.push([]);
     const paletteRgb = palette.slice(); if (inference.inferredColor !== null && inference.inferredColor >= palette.length) paletteRgb.push(null);
     onConfirm({ tubes, capacity: CAPACITY, paletteRgb, warnings });

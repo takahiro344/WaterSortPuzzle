@@ -14,27 +14,27 @@ const CLUSTER_THRESHOLD = 36;
 
 export interface ClusterResult {
   palette: RGB[]; // 色ID -> 代表色
-  assignedCells: { col: number; row: number; value: number }[];
+  assignedCells: { gridId: number; col: number; row: number; value: number }[];
 }
 
 // 取得したピクセル色から、空セルを除いた色をクラスタリングして色IDを割り当てる。
 // すでに手動で EMPTY / UNKNOWN が指定されているセルはそのまま尊重する。
 export function clusterColors(cells: GridCell[]): ClusterResult {
   const palette: RGB[] = [];
-  const assignedCells: { col: number; row: number; value: number }[] = [];
+  const assignedCells: { gridId: number; col: number; row: number; value: number }[] = [];
 
   for (const cell of cells) {
     if (cell.value === EMPTY || cell.value === UNKNOWN) {
-      assignedCells.push({ col: cell.col, row: cell.row, value: cell.value });
+      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: cell.value });
       continue;
     }
     if (!cell.rgb) {
-      assignedCells.push({ col: cell.col, row: cell.row, value: EMPTY });
+      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: EMPTY });
       continue;
     }
     const brightness = (cell.rgb.r + cell.rgb.g + cell.rgb.b) / 3;
     if (brightness <= EMPTY_BRIGHTNESS_MAX) {
-      assignedCells.push({ col: cell.col, row: cell.row, value: EMPTY });
+      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: EMPTY });
       continue;
     }
     let matched = -1;
@@ -47,10 +47,10 @@ export function clusterColors(cells: GridCell[]): ClusterResult {
       }
     }
     if (matched !== -1 && bestDist <= CLUSTER_THRESHOLD) {
-      assignedCells.push({ col: cell.col, row: cell.row, value: matched });
+      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: matched });
     } else {
       palette.push(cell.rgb);
-      assignedCells.push({ col: cell.col, row: cell.row, value: palette.length - 1 });
+      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: palette.length - 1 });
     }
   }
 

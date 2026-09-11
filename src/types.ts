@@ -16,6 +16,7 @@ export interface RGB {
 
 // グリッド上の1マス（列=試験管インデックス、行=段:下から0,1,2,3）
 export interface GridCell {
+  gridId: number; // 複数グリッド使用時に col/row の重複を区別するためのグリッド識別子
   col: number;
   row: number;
   x: number;
