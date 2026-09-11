@@ -108,7 +108,7 @@ function initialCorners(w: number, h: number): Corners {
   const gridW = w * 0.5,
     gridH = GRID_HEIGHT,
     left = (w - gridW) / 2,
-    top = (h - gridH) / 2;
+    top = h * 0.25;
   return {
     tl: { x: left, y: top },
     tr: { x: left + gridW, y: top },
@@ -408,305 +408,259 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     setErrorMsg(null);
     const canvas = canvasRef.current,
       ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx || !grids.length) return;
-    const cells: GridCell[] = [];
+    if (!ctx) return;
+
+    const tubes: number[][] = [];
+    const palette: (RGB | null)[] = [];
+    const warnings: string[] = [];
+    const seenUnknown = new Set<string>();
+
     for (const grid of grids) {
       const points = gridPoints.get(grid.id);
       if (!points) continue;
-      for (let r = 0; r < CAPACITY; r++)
-        for (let c = 0; c < grid.cols; c++) {
-          const pt = points[r][c],
-            key = cellKey(grid.id, c, r);
-          cells.push({
-            gridId: grid.id,
-            col: c,
-            row: r,
-            x: pt.x,
-            y: pt.y,
-            rgb: sampleColorAt(ctx, pt.x, pt.y),
-            value: overrides.get(key) ?? AUTO,
-          });
-        }
-    }
-    const { palette, assignedCells } = clusterColors(cells),
-      flatValues = assignedCells.map((c) => c.value),
-      inference = inferUnknownColor(flatValues, CAPACITY);
-    const warnings: string[] = [];
-    let resolvedValues = assignedCells;
-    if (flatValues.includes(UNKNOWN)) {
-      if (!inference.ok || inference.inferredColor === null) {
-        setErrorMsg(inference.message);
-        return;
-      }
-      warnings.push(inference.message);
-      resolvedValues = assignedCells.map((c) =>
-        c.value === UNKNOWN
-          ? { ...c, value: inference.inferredColor as number }
-          : c,
-      );
-    }
-    const valueByCell = new Map<string, number>();
-    for (const cell of resolvedValues)
-      valueByCell.set(`${cell.gridId}-${cell.col}-${cell.row}`, cell.value);
-    const tubes: number[][] = [];
-    for (const grid of grids)
       for (let c = 0; c < grid.cols; c++) {
         const tube: number[] = [];
-        for (let r = CAPACITY - 1; r >= 0; r--) {
-          const value = valueByCell.get(`${grid.id}-${c}-${r}`);
-          if (value !== undefined && value !== EMPTY) tube.push(value);
+        for (let r = 0; r < CAPACITY; r++) {
+          const key = cellKey(grid.id, c, r);
+          const override = overrides.get(key);
+          if (override !== undefined) {
+            tube.push(override);
+            continue;
+          }
+          const rgb = previewColors.get(key) ?? sampleColorAt(ctx, points[r][c].x, points[r][c].y);
+          const cluster = clusterColors([rgb])[0];
+          if (!cluster) {
+            tube.push(UNKNOWN);
+            continue;
+          }
+          const idx = palette.findIndex((p) => p && cluster && Math.hypot(p.r - cluster.r, p.g - cluster.g, p.b - cluster.b) < 45);
+          if (idx >= 0) tube.push(idx);
+          else {
+            palette.push(cluster);
+            tube.push(palette.length - 1);
+          }
         }
         tubes.push(tube);
       }
-    const emptyTubeCountValue = Math.max(0, parseInt(emptyTubeCount, 10) || 0);
-    for (let i = 0; i < emptyTubeCountValue; i++) tubes.push([]);
-    const paletteRgb: (RGB | null)[] = palette.slice();
-    if (
-      inference.inferredColor !== null &&
-      inference.inferredColor >= palette.length
-    ) {
-      const unknownCell = cells.find((cell) => cell.value === UNKNOWN);
-      paletteRgb[inference.inferredColor] = unknownCell?.rgb ?? null;
     }
-    onConfirm({ tubes, capacity: CAPACITY, paletteRgb, warnings });
+
+    const emptyCount = Math.max(0, Math.floor(Number(emptyTubeCount) || 0));
+    for (let i = 0; i < emptyCount; i++) tubes.push([EMPTY, EMPTY, EMPTY, EMPTY]);
+
+    for (const tube of tubes) {
+      const unknownCount = tube.filter((v) => v === UNKNOWN).length;
+      if (unknownCount > 0) {
+        const key = tube.join(",");
+        if (!seenUnknown.has(key)) {
+          seenUnknown.add(key);
+          warnings.push("判定できない色があります。グリッド位置や色の上書きを確認してください。");
+        }
+      }
+    }
+
+    onConfirm({ tubes, capacity: CAPACITY, paletteRgb: palette, warnings });
   };
 
-  const renderHandle = (
-    grid: GridConfig,
-    handle: Handle,
-    p: Point,
-    key: string,
-  ) => {
-    const preview = previewColors.get(key);
-    const override = overrides.get(key) ?? AUTO;
-    const fill =
-      override === EMPTY
-        ? "transparent"
-        : override === UNKNOWN
-          ? "#fff"
-          : preview
-            ? `rgb(${preview.r}, ${preview.g}, ${preview.b})`
-            : "transparent";
-    const startDrag = (e: React.PointerEvent<SVGCircleElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.currentTarget.setPointerCapture(e.pointerId);
-      dragMovedRef.current = false;
+  const getClientPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return { x: 0, y: 0 };
+    const rect = wrapper.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * canvasSize.w,
+      y: ((e.clientY - rect.top) / rect.height) * canvasSize.h,
+    };
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canvasSize.w || !canvasSize.h) return;
+    const p = getClientPoint(e);
+    let best:
+      | { gridId: number; corner: Handle; distance: number }
+      | null = null;
+
+    for (const grid of grids) {
+      const handles: { corner: Handle; point: Point }[] = [
+        { corner: "tl", point: grid.corners.tl },
+        { corner: "tr", point: grid.corners.tr },
+        { corner: "bl", point: grid.corners.bl },
+        { corner: "br", point: grid.corners.br },
+        {
+          corner: "topCenter",
+          point: {
+            x: (grid.corners.tl.x + grid.corners.tr.x) / 2,
+            y: (grid.corners.tl.y + grid.corners.tr.y) / 2,
+          },
+        },
+        {
+          corner: "bottomCenter",
+          point: {
+            x: (grid.corners.bl.x + grid.corners.br.x) / 2,
+            y: (grid.corners.bl.y + grid.corners.br.y) / 2,
+          },
+        },
+      ];
+      for (const h of handles) {
+        const d = Math.hypot(p.x - h.point.x, p.y - h.point.y);
+        if (d <= HANDLE_HIT_R && (!best || d < best.distance))
+          best = { gridId: grid.id, corner: h.corner, distance: d };
+      }
+    }
+
+    if (best) {
+      const grid = grids.find((g) => g.id === best!.gridId);
+      if (!grid) return;
       setSelectedGridId(grid.id);
+      dragMovedRef.current = false;
       setDragging({
         gridId: grid.id,
-        corner: handle,
+        corner: best.corner,
         startX: p.x,
         startY: p.y,
         startClientX: e.clientX,
         startClientY: e.clientY,
-        startCorners: { ...grid.corners },
+        startCorners: grid.corners,
       });
-    };
+      return;
+    }
 
-    return (
-      <g key={handle}>
-        <circle
-          cx={p.x}
-          cy={p.y}
-          r={HANDLE_HIT_R}
-          fill="transparent"
-          stroke="none"
-          style={{ pointerEvents: "all", touchAction: "none" }}
-          onPointerDown={startDrag}
-        />
-        <circle
-          className="corner-handle"
-          cx={p.x}
-          cy={p.y}
-          r={HANDLE_R}
-          fill={fill}
-          style={{ pointerEvents: "none" }}
-          stroke={override === UNKNOWN ? "#000" : "#fff"}
-          strokeWidth={1.5}
-        />
-      </g>
-    );
+    let bestCell: { gridId: number; col: number; row: number; distance: number } | null = null;
+    for (const grid of grids) {
+      const points = gridPoints.get(grid.id);
+      if (!points) continue;
+      for (let r = 0; r < points.length; r++)
+        for (let c = 0; c < points[r].length; c++) {
+          const point = points[r][c];
+          const d = Math.hypot(p.x - point.x, p.y - point.y);
+          if (d <= CELL_HIT_R && (!bestCell || d < bestCell.distance))
+            bestCell = { gridId: grid.id, col: c, row: r, distance: d };
+        }
+    }
+    if (bestCell) {
+      setSelectedGridId(bestCell.gridId);
+      cycleOverride(bestCell.gridId, bestCell.col, bestCell.row);
+    }
   };
 
   return (
-    <div className="step-panel">
-      <h2>(2/3) グリッドで色取得</h2>
-      <ol className="instructions">
-        <li>
-          各グリッドの交点が試験管の色水の中心に来るように、四隅のハンドルを調整してください。
-        </li>
-        <li>
-          g+ / g- でグリッドを追加・削除し、c+ / c-
-          で選択中のグリッドの縦線を追加・削除できます。
-        </li>
-        <li>
-          交点をクリックすると 自動 → 空 → 不明 → 自動
-          の順に切り替わります（不明は1箇所まで）。
-        </li>
-      </ol>
-      <div className="grid-controls">
-        <span>
-          グリッド:
-          {selectedGridId === null
-            ? "-"
-            : grids.findIndex((g) => g.id === selectedGridId) + 1}
-        </span>
-        <button onClick={handleRemoveGrid} disabled={grids.length <= 1}>
-          g-
-        </button>
-        <button onClick={handleAddGrid}>g+</button>
-        <button onClick={handleRemoveColumn} disabled={selectedGridId === null}>
-          c-
-        </button>
-        <button onClick={handleAddColumn} disabled={selectedGridId === null}>
-          c+
-        </button>
-        <button onClick={handleResetGrid}>リセット</button>
-      </div>
-      <div
-        ref={wrapperRef}
-        className="canvas-wrapper"
-        style={{ width: canvasSize.w, height: canvasSize.h }}
-      >
-        <canvas ref={canvasRef} />
-        {grids.map((grid) => {
-          const points = gridPoints.get(grid.id);
-          if (!points) return null;
-          const selected = grid.id === selectedGridId;
-          return (
-            <React.Fragment key={grid.id}>
-              <svg
-                className="grid-overlay"
-                width={canvasSize.w}
-                height={canvasSize.h}
-                onPointerDown={() => setSelectedGridId(grid.id)}
-              >
-                {points.map((row, r) => (
-                  <line
-                    key={`h-${grid.id}-${r}`}
-                    className="grid-line"
-                    x1={row[0].x}
-                    y1={row[0].y}
-                    x2={row[row.length - 1].x}
-                    y2={row[row.length - 1].y}
-                  />
-                ))}
-                {points[0]?.map((_, c) => (
-                  <line
-                    key={`v-${grid.id}-${c}`}
-                    className="grid-line"
-                    x1={points[0][c].x}
-                    y1={points[0][c].y}
-                    x2={points[points.length - 1][c].x}
-                    y2={points[points.length - 1][c].y}
-                  />
-                ))}
+    <div className="space-y-4">
+      <div ref={wrapperRef} className="relative mx-auto w-fit max-w-full overflow-hidden rounded-lg border bg-black/5">
+        <canvas
+          ref={canvasRef}
+          onPointerDown={handlePointerDown}
+          className="block max-w-full touch-none"
+        />
+        <svg
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`}
+          preserveAspectRatio="none"
+        >
+          {grids.map((grid) => {
+            const points = gridPoints.get(grid.id) ?? [];
+            const selected = grid.id === selectedGridId;
+            return (
+              <g key={grid.id}>
                 {points.map((row, r) =>
                   row.map((p, c) => {
-                    const key = cellKey(grid.id, c, r),
-                      value = overrides.get(key) ?? AUTO,
-                      preview = previewColors.get(key);
+                    const rgb = previewColors.get(cellKey(grid.id, c, r));
+                    const override = overrides.get(cellKey(grid.id, c, r));
                     const fill =
-                      value === EMPTY
-                        ? "transparent"
-                        : value === UNKNOWN
-                          ? "#fff"
-                          : preview
-                            ? `rgb(${preview.r}, ${preview.g}, ${preview.b})`
-                            : "transparent";
+                      override === EMPTY
+                        ? "#ffffff"
+                        : override === UNKNOWN
+                          ? "#000000"
+                          : rgb
+                            ? `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`
+                            : "#ffffff";
                     return (
-                      <g key={key}>
-                        <circle
-                          cx={p.x}
-                          cy={p.y}
-                          r={CELL_HIT_R}
-                          fill="transparent"
-                          stroke="none"
-                          style={{ pointerEvents: "all", touchAction: "none" }}
-                          onPointerDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            cycleOverride(grid.id, c, r);
-                          }}
-                        />
-                        <circle
-                          cx={p.x}
-                          cy={p.y}
-                          r={HANDLE_R}
-                          fill={fill}
-                          stroke={
-                            value === UNKNOWN
-                              ? "#000"
-                              : selected
-                                ? "#fff"
-                                : "#888"
-                          }
-                          strokeWidth={1}
-                          style={{ pointerEvents: "none" }}
-                        />
-                      </g>
+                      <circle
+                        key={`${r}-${c}`}
+                        cx={p.x}
+                        cy={p.y}
+                        r={3.5}
+                        fill={fill}
+                        stroke={selected ? "#2563eb" : "#64748b"}
+                        strokeWidth={1}
+                        opacity={0.95}
+                      />
                     );
                   }),
                 )}
-                {selected &&
-                  (grid.cols === 1
-                    ? (["topCenter", "bottomCenter"] as Handle[]).map(
-                        (handle) => {
-                          const row = handle === "topCenter" ? 0 : CAPACITY - 1;
-                          return renderHandle(
-                            grid,
-                            handle,
-                            bilinear(grid.corners, 0.5, row / (CAPACITY - 1)),
-                            cellKey(grid.id, 0, row),
-                          );
-                        },
-                      )
-                    : (
-                        Object.entries(grid.corners) as [keyof Corners, Point][]
-                      ).map(([corner, p]) => {
-                        const col =
-                          corner === "tl" || corner === "bl"
-                            ? 0
-                            : grid.cols - 1;
-                        const row =
-                          corner === "tl" || corner === "tr" ? 0 : CAPACITY - 1;
-                        return renderHandle(
-                          grid,
-                          corner,
-                          p,
-                          cellKey(grid.id, col, row),
-                        );
-                      }))}
-              </svg>
-            </React.Fragment>
-          );
-        })}
+                {selected && (
+                  <>
+                    <line
+                      x1={grid.corners.tl.x}
+                      y1={grid.corners.tl.y}
+                      x2={grid.corners.tr.x}
+                      y2={grid.corners.tr.y}
+                      stroke="#2563eb"
+                      strokeWidth={1}
+                    />
+                    <line
+                      x1={grid.corners.bl.x}
+                      y1={grid.corners.bl.y}
+                      x2={grid.corners.br.x}
+                      y2={grid.corners.br.y}
+                      stroke="#2563eb"
+                      strokeWidth={1}
+                    />
+                    {(["tl", "tr", "bl", "br"] as (keyof Corners)[]).map((key) => (
+                      <circle
+                        key={key}
+                        cx={grid.corners[key].x}
+                        cy={grid.corners[key].y}
+                        r={HANDLE_R}
+                        fill="#ffffff"
+                        stroke="#2563eb"
+                        strokeWidth={2}
+                      />
+                    ))}
+                    <circle
+                      cx={(grid.corners.tl.x + grid.corners.tr.x) / 2}
+                      cy={(grid.corners.tl.y + grid.corners.tr.y) / 2}
+                      r={HANDLE_R}
+                      fill="#ffffff"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                    />
+                    <circle
+                      cx={(grid.corners.bl.x + grid.corners.br.x) / 2}
+                      cy={(grid.corners.bl.y + grid.corners.br.y) / 2}
+                      r={HANDLE_R}
+                      fill="#ffffff"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                    />
+                  </>
+                )}
+              </g>
+            );
+          })}
+        </svg>
       </div>
-      {errorMsg && <div className="error-message">{errorMsg}</div>}
-      <div className="empty-tube-control">
-        <label>
-          空試験管
+
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button type="button" onClick={handleAddGrid} className="rounded border px-3 py-1.5 text-sm">g+</button>
+        <button type="button" onClick={handleRemoveGrid} className="rounded border px-3 py-1.5 text-sm">g-</button>
+        <button type="button" onClick={handleAddColumn} className="rounded border px-3 py-1.5 text-sm">c+</button>
+        <button type="button" onClick={handleRemoveColumn} className="rounded border px-3 py-1.5 text-sm">c-</button>
+        <button type="button" onClick={handleResetGrid} className="rounded border px-3 py-1.5 text-sm">Reset</button>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <label className="text-sm">
+          Empty tubes:
           <input
-            type="number"
-            min={0}
             value={emptyTubeCount}
             onChange={(e) => setEmptyTubeCount(e.target.value)}
-            onBlur={() =>
-              setEmptyTubeCount((value) => {
-                const parsed = parseInt(value, 10);
-                return parsed >= 0 ? String(parsed) : "0";
-              })
-            }
+            inputMode="numeric"
+            className="ml-2 w-16 rounded border px-2 py-1 text-sm"
           />
         </label>
+        <button type="button" onClick={onBack} className="rounded border px-3 py-1.5 text-sm">Back</button>
+        <button type="button" onClick={handleSolveClick} className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white">Solve</button>
       </div>
-      <div className="step-actions">
-        <button onClick={onBack}>戻る</button>
-        <button className="primary" onClick={handleSolveClick}>
-          解く
-        </button>
-      </div>
+
+      {errorMsg && <p className="text-center text-sm text-red-600">{errorMsg}</p>}
     </div>
   );
 };
