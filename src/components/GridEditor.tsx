@@ -26,17 +26,14 @@ function sampleColorAt(ctx: CanvasRenderingContext2D, x: number, y: number): RGB
   return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
 }
 
-// 初期グリッドだけを画像の50%サイズにする。画像の表示サイズ自体は変更しない。
 function initialCorners(w: number, h: number): Corners {
   const gridW = w * 0.5;
   const gridH = h * 0.5;
   const left = (w - gridW) / 2;
   const top = (h - gridH) / 2;
   return {
-    tl: { x: left, y: top },
-    tr: { x: left + gridW, y: top },
-    bl: { x: left, y: top + gridH },
-    br: { x: left + gridW, y: top + gridH }
+    tl: { x: left, y: top }, tr: { x: left + gridW, y: top },
+    bl: { x: left, y: top + gridH }, br: { x: left + gridW, y: top + gridH }
   };
 }
 
@@ -49,12 +46,11 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [nextGridId, setNextGridId] = useState(1);
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
   const [emptyTubeCount, setEmptyTubeCount] = useState(0);
-  const [dragging, setDragging] = useState<{ gridId: number; corner: keyof Corners } | null>(null);
+  const [dragging, setDragging] = useState<{ gridId: number; corner: keyof Corners; startX: number; startY: number; startCorners: Corners } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [previewColors, setPreviewColors] = useState<Map<string, RGB>>(new Map());
 
   useEffect(() => {
-    // 画像の表示サイズは従来どおり。ここでは初期グリッドのサイズだけを50%にする。
     const maxW = Math.min(900, image.naturalWidth);
     const scale = maxW / image.naturalWidth;
     const w = Math.round(image.naturalWidth * scale);
@@ -93,7 +89,20 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const scaleY = rect.height > 0 ? canvasSize.h / rect.height : 1;
       const x = Math.min(Math.max((e.clientX - rect.left) * scaleX, 0), canvasSize.w);
       const y = Math.min(Math.max((e.clientY - rect.top) * scaleY, 0), canvasSize.h);
-      setGrids(prev => prev.map(grid => grid.id === dragging.gridId ? { ...grid, corners: { ...grid.corners, [dragging.corner]: { x, y } } } : grid));
+      const dx = x - dragging.startX;
+      const dy = y - dragging.startY;
+      const corner = dragging.corner;
+      const moveHorizontal = corner === 'tl' || corner === 'bl' ? 'left' : 'right';
+      const moveVertical = corner === 'tl' || corner === 'tr' ? 'top' : 'bottom';
+      setGrids(prev => prev.map(grid => {
+        if (grid.id !== dragging.gridId) return grid;
+        const nextCorners = { ...dragging.startCorners };
+        const horizontalCorners: (keyof Corners)[] = moveHorizontal === 'left' ? ['tl', 'bl'] : ['tr', 'br'];
+        const verticalCorners: (keyof Corners)[] = moveVertical === 'top' ? ['tl', 'tr'] : ['bl', 'br'];
+        for (const key of horizontalCorners) nextCorners[key] = { ...nextCorners[key], x: Math.max(0, Math.min(canvasSize.w, dragging.startCorners[key].x + dx)) };
+        for (const key of verticalCorners) nextCorners[key] = { ...nextCorners[key], y: Math.max(0, Math.min(canvasSize.h, dragging.startCorners[key].y + dy)) };
+        return { ...grid, corners: nextCorners };
+      }));
     };
     const onUp = () => setDragging(null);
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
@@ -175,7 +184,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           {points.map((row, r) => <line key={`h-${grid.id}-${r}`} className="grid-line" x1={row[0].x} y1={row[0].y} x2={row[row.length - 1].x} y2={row[row.length - 1].y} />)}
           {points[0]?.map((_, c) => <line key={`v-${grid.id}-${c}`} className="grid-line" x1={points[0][c].x} y1={points[0][c].y} x2={points[points.length - 1][c].x} y2={points[points.length - 1][c].y} />)}
           {points.map((row, r) => row.map((p, c) => { const key = cellKey(grid.id, c, r), value = overrides.get(key) ?? AUTO, preview = previewColors.get(key); const fill = value === EMPTY ? 'transparent' : value === UNKNOWN ? '#fff' : preview ? `rgb(${preview.r}, ${preview.g}, ${preview.b})` : 'transparent'; return <circle key={key} cx={p.x} cy={p.y} r={7} fill={fill} stroke={value === UNKNOWN ? '#000' : selected ? '#fff' : '#888'} strokeWidth={2} onPointerDown={e => { e.stopPropagation(); cycleOverride(grid.id, c, r); }}/>; }))}
-          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={3} onPointerDown={e => { e.stopPropagation(); setDragging({ gridId: grid.id, corner }); }}/>)}</>}
+          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={3} onPointerDown={e => { e.stopPropagation(); const rect = wrapperRef.current?.getBoundingClientRect(); if (!rect) return; const sx = rect.width > 0 ? canvasSize.w / rect.width : 1; const sy = rect.height > 0 ? canvasSize.h / rect.height : 1; setDragging({ gridId: grid.id, corner, startX: p.x, startY: p.y, startCorners: { ...grid.corners } }); }}/>)}</>}
         </svg>
       </React.Fragment>; })}
     </div>
