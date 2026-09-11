@@ -99,8 +99,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   useEffect(() => {
     const maxW = Math.min(900, image.naturalWidth);
     const scale = maxW / image.naturalWidth;
-    const w = Math.round(image.naturalWidth * scale);
-    const h = Math.round(image.naturalHeight * scale);
+    const w = Math.round(image.naturalWidth * scale * 0.5);
+    const h = Math.round(image.naturalHeight * scale * 0.5);
 
     setCanvasSize({ w, h });
 
@@ -450,153 +450,98 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         <button onClick={handleRemoveColumn} disabled={selectedGridId === null}>c-</button>
         <button onClick={handleAddColumn} disabled={selectedGridId === null}>c+</button>
 
-        <button onClick={handleResetGrid}>gr</button>
+        <button onClick={handleResetGrid}>リセット</button>
+
+        <label>
+          空試験管
+          <input
+            type="number"
+            min={0}
+            value={emptyTubeCount}
+            onChange={(e) => setEmptyTubeCount(Math.max(0, Number(e.target.value) || 0))}
+          />
+        </label>
       </div>
 
-      <div
-        className="canvas-wrapper"
-        ref={wrapperRef}
-        style={{ width: canvasSize.w, height: canvasSize.h }}
-      >
+      <div ref={wrapperRef} className="grid-canvas-wrapper" style={{ width: canvasSize.w, height: canvasSize.h }}>
         <canvas ref={canvasRef} />
+        {grids.map((grid) => {
+          const points = gridPoints.get(grid.id);
+          if (!points) return null;
 
-        <svg
-          className="grid-overlay"
-          width={canvasSize.w}
-          height={canvasSize.h}
-          viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`}
-        >
-          {grids.map((grid) => {
-            const points = gridPoints.get(grid.id);
-            if (!points) return null;
+          const selected = grid.id === selectedGridId;
 
-            const selected = grid.id === selectedGridId;
-
-            return (
-              <g
-                key={grid.id}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setSelectedGridId(grid.id);
-                }}
+          return (
+            <React.Fragment key={grid.id}>
+              <svg
+                className="grid-overlay"
+                width={canvasSize.w}
+                height={canvasSize.h}
+                onPointerDown={() => setSelectedGridId(grid.id)}
               >
-                {points.map((rowPts, r) => (
-                  <polyline
-                    key={`row-${grid.id}-${r}`}
-                    points={rowPts.map((p) => `${p.x},${p.y}`).join(' ')}
-                    className="grid-line"
-                    style={{ opacity: selected ? 1 : 0.65 }}
-                  />
-                ))}
-
-                {Array.from({ length: grid.cols }).map((_, c) => (
-                  <polyline
-                    key={`col-${grid.id}-${c}`}
-                    points={points.map((rowPts) => `${rowPts[c].x},${rowPts[c].y}`).join(' ')}
-                    className="grid-line"
-                    style={{ opacity: selected ? 1 : 0.65 }}
-                  />
-                ))}
-
-                {points.map((rowPts, r) =>
-                  rowPts.map((p, c) => {
+                {points.map((row, r) =>
+                  row.map((p, c) => {
                     const key = cellKey(grid.id, c, r);
-                    const ov = overrides.get(key);
-                    const sampled = previewColors.get(key);
-
-                    let fill = sampled
-                      ? `rgb(${sampled.r},${sampled.g},${sampled.b})`
-                      : 'rgba(255,255,255,0.6)';
-                    let label = '';
-
-                    if (ov === EMPTY) {
-                      fill = '#888';
-                      label = '空';
-                    } else if (ov === UNKNOWN) {
-                      fill = '#ff0';
-                      label = '?';
-                    }
+                    const value = overrides.get(key) ?? AUTO;
+                    const preview = previewColors.get(key);
+                    const fill =
+                      value === EMPTY
+                        ? 'transparent'
+                        : value === UNKNOWN
+                          ? '#ffffff'
+                          : preview
+                            ? `rgb(${preview.r}, ${preview.g}, ${preview.b})`
+                            : 'transparent';
 
                     return (
-                      <g
-                        key={key}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          cycleOverride(grid.id, c, r);
-                        }}
-                        style={{ cursor: 'pointer' }}
-                      >
+                      <g key={key}>
                         <circle
                           cx={p.x}
                           cy={p.y}
-                          r={selected ? 7 : 6}
+                          r={7}
                           fill={fill}
-                          stroke="#000"
-                          strokeWidth={selected ? 1 : 0.75}
+                          stroke={value === UNKNOWN ? '#000' : selected ? '#fff' : '#888'}
+                          strokeWidth={2}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            cycleOverride(grid.id, c, r);
+                          }}
                         />
-                        {label && (
-                          <text
-                            x={p.x}
-                            y={p.y + 4}
-                            textAnchor="middle"
-                            fontSize={10}
-                            fill="#000"
-                          >
-                            {label}
-                          </text>
-                        )}
                       </g>
                     );
                   })
                 )}
 
-                {(Object.keys(grid.corners) as (keyof Corners)[]).map((corner) => {
-                  const p = grid.corners[corner];
-
-                  return (
-                    <circle
-                      key={`${grid.id}-${corner}`}
-                      cx={p.x}
-                      cy={p.y}
-                      r={HANDLE_R}
-                      className="corner-handle"
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        setSelectedGridId(grid.id);
-                        setDragging({ gridId: grid.id, corner });
-                      }}
-                    />
-                  );
-                })}
-              </g>
-            );
-          })}
-        </svg>
+                {selected && (
+                  <>
+                    {(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => (
+                      <circle
+                        key={corner}
+                        cx={p.x}
+                        cy={p.y}
+                        r={HANDLE_R}
+                        fill="none"
+                        stroke="#00ffff"
+                        strokeWidth={3}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          setDragging({ gridId: grid.id, corner });
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+              </svg>
+            </React.Fragment>
+          );
+        })}
       </div>
 
-      <div className="empty-tube-input">
-        <label>
-          空の試験管の数:
-          <input
-            type="number"
-            min={0}
-            value={emptyTubeCount}
-            onChange={(e) =>
-              setEmptyTubeCount(
-                Math.max(0, parseInt(e.target.value || '0', 10))
-              )
-            }
-          />
-        </label>
-      </div>
+      {errorMsg && <div className="error-message">{errorMsg}</div>}
 
-      {errorMsg && <p className="error-msg">{errorMsg}</p>}
-
-      <div className="button-row">
+      <div className="step-actions">
         <button onClick={onBack}>戻る</button>
-        <button className="primary" onClick={handleSolveClick}>
-          解く
-        </button>
+        <button className="primary" onClick={handleSolveClick}>解く</button>
       </div>
     </div>
   );
