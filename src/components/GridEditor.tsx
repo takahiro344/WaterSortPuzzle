@@ -51,7 +51,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [previewColors, setPreviewColors] = useState<Map<string, RGB>>(new Map());
 
   useEffect(() => {
-    const maxW = Math.min(900, image.naturalWidth);
+    const maxW = Math.min(900, image.naturalWidth * 0.5);
     const scale = maxW / image.naturalWidth;
     const w = Math.round(image.naturalWidth * scale);
     const h = Math.round(image.naturalHeight * scale);
