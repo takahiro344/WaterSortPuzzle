@@ -408,7 +408,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         tubes.push(tube);
       }
     for (let i = 0; i < emptyTubeCount; i++) tubes.push([]);
-    const paletteRgb = palette.slice();
+    const paletteRgb: (RGB | null)[] = palette.slice();
     if (
       inference.inferredColor !== null &&
       inference.inferredColor >= palette.length
