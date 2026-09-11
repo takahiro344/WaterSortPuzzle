@@ -125,6 +125,30 @@ body {
   padding: 4px;
 }
 
+.empty-tube-control {
+  margin: 16px 0;
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.empty-tube-control label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.empty-tube-control input {
+  width: 60px;
+  padding: 4px;
+}
+
+.step-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .button-row {
   display: flex;
   gap: 8px;
