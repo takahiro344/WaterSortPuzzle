@@ -108,7 +108,6 @@ body {
 }
 
 .corner-handle {
-  fill: rgba(255, 60, 60, 0.9);
   stroke: #fff;
   stroke-width: 2;
   cursor: grab;
