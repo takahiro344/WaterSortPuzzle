@@ -29,6 +29,8 @@ interface Props {
   onConfirm: (result: GridConfirmResult) => void;
 }
 
+const GRID_HEIGHT = 100;
+
 const HANDLE_R = 4.2;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
@@ -103,7 +105,7 @@ function sampleColorAt(
 }
 function initialCorners(w: number, h: number): Corners {
   const gridW = w * 0.5,
-    gridH = h * 0.5,
+    gridH = GRID_HEIGHT,
     left = (w - gridW) / 2,
     top = (h - gridH) / 2;
   return {
