@@ -169,7 +169,16 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         );
       const dx = x - dragging.startX,
         dy = y - dragging.startY;
-      if (Math.hypot(dx, dy) > DRAG_THRESHOLD) dragMovedRef.current = true;
+
+      // A small amount of movement is normal when tapping on a phone.
+      // Do not resize the grid until the movement clearly exceeds the
+      // drag threshold. This keeps a handle tap available for cycling
+      // AUTO -> EMPTY -> UNKNOWN -> AUTO.
+      if (!dragMovedRef.current) {
+        if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) return;
+        dragMovedRef.current = true;
+      }
+
       const corner = dragging.corner;
       setGrids((prev) =>
         prev.map((grid) => {
