@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { clusterColors, inferUnknownColor } from "../colorLogic";
+import { clusterColors } from "../colorLogic";
 import { AUTO, EMPTY, GridCell, RGB, UNKNOWN } from "../types";
 
 interface Point {
@@ -29,38 +29,39 @@ interface Props {
   onConfirm: (result: GridConfirmResult) => void;
 }
 
+type ColorOverride = number | RGB;
+type Handle = keyof Corners | "topCenter" | "bottomCenter";
+
 const HANDLE_R = 4.2;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
 const DRAG_THRESHOLD = 20;
 const HANDLE_HIT_R = 14;
 const CELL_HIT_R = 10;
-type Handle = keyof Corners | "topCenter" | "bottomCenter";
+const COLOR_DISTANCE = 45;
 
 function lerp(a: Point, b: Point, t: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
+
 function bilinear(c: Corners, u: number, v: number): Point {
   return lerp(lerp(c.tl, c.tr, u), lerp(c.bl, c.br, u), v);
 }
+
+function colorDistance(a: RGB, b: RGB): number {
+  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+}
+
 function sampleColorAt(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
 ): RGB {
   const candidates = [
-    [0, 0],
-    [-5, 0],
-    [5, 0],
-    [0, -5],
-    [0, 5],
-    [-4, -4],
-    [4, -4],
-    [-4, 4],
-    [4, 4],
+    [0, 0], [-5, 0], [5, 0], [0, -5], [0, 5],
+    [-4, -4], [4, -4], [-4, 4], [4, 4],
   ];
   const size = SAMPLE_RADIUS * 2 + 1;
-
   const sample = (cx: number, cy: number) => {
     const sx = Math.min(
       Math.max(0, Math.round(cx - SAMPLE_RADIUS)),
@@ -71,10 +72,7 @@ function sampleColorAt(
       Math.max(0, ctx.canvas.height - size),
     );
     const data = ctx.getImageData(sx, sy, size, size).data;
-    let r = 0,
-      g = 0,
-      b = 0,
-      n = 0;
+    let r = 0, g = 0, b = 0, n = 0;
     for (let i = 0; i < data.length; i += 4) {
       r += data[i];
       g += data[i + 1];
@@ -101,6 +99,7 @@ function sampleColorAt(
   }
   return best.rgb;
 }
+
 function initialCorners(w: number, h: number): Corners {
   const gridW = w * 0.5,
     gridH = h * 0.5,
@@ -122,8 +121,15 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [grids, setGrids] = useState<GridConfig[]>([]);
   const [selectedGridId, setSelectedGridId] = useState<number | null>(null);
   const [nextGridId, setNextGridId] = useState(1);
-  const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
+  const [overrides, setOverrides] = useState<Map<string, ColorOverride>>(new Map());
   const [emptyTubeCount, setEmptyTubeCount] = useState("0");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [previewColors, setPreviewColors] = useState<Map<string, RGB>>(new Map());
+  const [colorPicker, setColorPicker] = useState<{
+    gridId: number;
+    col: number;
+    row: number;
+  } | null>(null);
   const [dragging, setDragging] = useState<{
     gridId: number;
     corner: Handle;
@@ -133,10 +139,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     startClientY: number;
     startCorners: Corners;
   } | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [previewColors, setPreviewColors] = useState<Map<string, RGB>>(
-    new Map(),
-  );
 
   useEffect(() => {
     const maxW = Math.min(900, image.naturalWidth * 0.5),
@@ -156,6 +158,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     setNextGridId(1);
     setOverrides(new Map());
     setPreviewColors(new Map());
+    setColorPicker(null);
     setErrorMsg(null);
   }, [image]);
 
@@ -164,9 +167,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     for (const grid of grids) {
       const points: Point[][] = [];
       for (let r = 0; r < CAPACITY; r++) {
-        const v = r / (CAPACITY - 1),
-          row: Point[] = [];
-        for (let c = 0; c < grid.cols; c++)
+        const v = r / (CAPACITY - 1), row: Point[] = [];
+        for (let c = 0; c < grid.cols; c++) {
           row.push(
             bilinear(
               grid.corners,
@@ -174,6 +176,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
               v,
             ),
           );
+        }
         points.push(row);
       }
       result.set(grid.id, points);
@@ -184,26 +187,48 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const cellKey = (gridId: number, col: number, row: number) =>
     `${gridId}-${col}-${row}`;
 
+  const detectedColors = useMemo(() => {
+    const palette: RGB[] = [];
+    for (const rgb of previewColors.values()) {
+      const brightness = (rgb.r + rgb.g + rgb.b) / 3;
+      if (brightness <= 40) continue;
+      const match = palette.findIndex((p) => colorDistance(p, rgb) < COLOR_DISTANCE);
+      if (match < 0) palette.push(rgb);
+    }
+    return palette;
+  }, [previewColors]);
+
+  const openColorPicker = (gridId: number, col: number, row: number) => {
+    setSelectedGridId(gridId);
+    setColorPicker({ gridId, col, row });
+  };
+
+  const setColorOverride = (value: ColorOverride | "auto") => {
+    if (!colorPicker) return;
+    const key = cellKey(colorPicker.gridId, colorPicker.col, colorPicker.row);
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      if (value === "auto") next.delete(key);
+      else next.set(key, value);
+      return next;
+    });
+    setColorPicker(null);
+  };
+
   useEffect(() => {
     if (!dragging) return;
     const onMove = (e: PointerEvent) => {
       const wrapper = wrapperRef.current;
       if (!wrapper) return;
       const rect = wrapper.getBoundingClientRect();
-      const scaleX = rect.width > 0 ? canvasSize.w / rect.width : 1,
-        scaleY = rect.height > 0 ? canvasSize.h / rect.height : 1;
-      const x = Math.min(
-          Math.max((e.clientX - rect.left) * scaleX, 0),
-          canvasSize.w,
-        ),
-        y = Math.min(
-          Math.max((e.clientY - rect.top) * scaleY, 0),
-          canvasSize.h,
-        );
-      const dx = x - dragging.startX,
-        dy = y - dragging.startY;
-      const clientDx = e.clientX - dragging.startClientX,
-        clientDy = e.clientY - dragging.startClientY;
+      const scaleX = rect.width > 0 ? canvasSize.w / rect.width : 1;
+      const scaleY = rect.height > 0 ? canvasSize.h / rect.height : 1;
+      const x = Math.min(Math.max((e.clientX - rect.left) * scaleX, 0), canvasSize.w);
+      const y = Math.min(Math.max((e.clientY - rect.top) * scaleY, 0), canvasSize.h);
+      const dx = x - dragging.startX;
+      const dy = y - dragging.startY;
+      const clientDx = e.clientX - dragging.startClientX;
+      const clientDy = e.clientY - dragging.startClientY;
 
       if (!dragMovedRef.current) {
         if (Math.hypot(clientDx, clientDy) <= DRAG_THRESHOLD) return;
@@ -216,45 +241,34 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           if (grid.id !== dragging.gridId) return grid;
           const nextCorners = { ...dragging.startCorners };
           if (corner === "topCenter" || corner === "bottomCenter") {
-            for (const key of ["tl", "tr", "bl", "br"] as (keyof Corners)[])
+            for (const key of ["tl", "tr", "bl", "br"] as (keyof Corners)[]) {
               nextCorners[key] = {
                 ...nextCorners[key],
-                x: Math.max(
-                  0,
-                  Math.min(canvasSize.w, dragging.startCorners[key].x + dx),
-                ),
+                x: Math.max(0, Math.min(canvasSize.w, dragging.startCorners[key].x + dx)),
               };
-            const vertical =
-              corner === "topCenter" ? ["tl", "tr"] : ["bl", "br"];
-            for (const key of vertical as (keyof Corners)[])
+            }
+            const vertical = corner === "topCenter" ? ["tl", "tr"] : ["bl", "br"];
+            for (const key of vertical as (keyof Corners)[]) {
               nextCorners[key] = {
                 ...nextCorners[key],
-                y: Math.max(
-                  0,
-                  Math.min(canvasSize.h, dragging.startCorners[key].y + dy),
-                ),
+                y: Math.max(0, Math.min(canvasSize.h, dragging.startCorners[key].y + dy)),
               };
+            }
           } else {
-            const horizontal =
-              corner === "tl" || corner === "bl" ? ["tl", "bl"] : ["tr", "br"];
-            const vertical =
-              corner === "tl" || corner === "tr" ? ["tl", "tr"] : ["bl", "br"];
-            for (const key of horizontal as (keyof Corners)[])
+            const horizontal = corner === "tl" || corner === "bl" ? ["tl", "bl"] : ["tr", "br"];
+            const vertical = corner === "tl" || corner === "tr" ? ["tl", "tr"] : ["bl", "br"];
+            for (const key of horizontal as (keyof Corners)[]) {
               nextCorners[key] = {
                 ...nextCorners[key],
-                x: Math.max(
-                  0,
-                  Math.min(canvasSize.w, dragging.startCorners[key].x + dx),
-                ),
+                x: Math.max(0, Math.min(canvasSize.w, dragging.startCorners[key].x + dx)),
               };
-            for (const key of vertical as (keyof Corners)[])
+            }
+            for (const key of vertical as (keyof Corners)[]) {
               nextCorners[key] = {
                 ...nextCorners[key],
-                y: Math.max(
-                  0,
-                  Math.min(canvasSize.h, dragging.startCorners[key].y + dy),
-                ),
+                y: Math.max(0, Math.min(canvasSize.h, dragging.startCorners[key].y + dy)),
               };
+            }
           }
           return { ...grid, corners: nextCorners };
         }),
@@ -263,17 +277,15 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const onUp = () => {
       if (!dragMovedRef.current) {
         const corner = dragging.corner;
+        const grid = grids.find((g) => g.id === dragging.gridId);
         const col =
           corner === "tl" || corner === "bl"
             ? 0
             : corner === "tr" || corner === "br"
-              ? (grids.find((g) => g.id === dragging.gridId)?.cols ?? 1) - 1
+              ? (grid?.cols ?? 1) - 1
               : 0;
-        const row =
-          corner === "tl" || corner === "tr" || corner === "topCenter"
-            ? 0
-            : CAPACITY - 1;
-        cycleOverride(dragging.gridId, col, row);
+        const row = corner === "tl" || corner === "tr" || corner === "topCenter" ? 0 : CAPACITY - 1;
+        openColorPicker(dragging.gridId, col, row);
       }
       dragMovedRef.current = false;
       setDragging(null);
@@ -293,64 +305,31 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     for (const grid of grids) {
       const points = gridPoints.get(grid.id);
       if (!points) continue;
-      for (let r = 0; r < points.length; r++)
+      for (let r = 0; r < points.length; r++) {
         for (let c = 0; c < points[r].length; c++) {
           const p = points[r][c];
           map.set(cellKey(grid.id, c, r), sampleColorAt(ctx, p.x, p.y));
         }
+      }
     }
     setPreviewColors(map);
   }, [gridPoints, grids]);
 
-  const cycleOverride = (gridId: number, col: number, row: number) => {
-    setSelectedGridId(gridId);
-    setOverrides((prev) => {
-      const next = new Map(prev),
-        key = cellKey(gridId, col, row),
-        cur = next.get(key) ?? AUTO;
-      if (cur === AUTO) next.set(key, EMPTY);
-      else if (cur === EMPTY) {
-        const alreadyUnknown = [...next.entries()].some(
-          ([k, v]) => v === UNKNOWN && k !== key,
-        );
-        if (alreadyUnknown) next.set(key, AUTO);
-        else next.set(key, UNKNOWN);
-      } else next.delete(key);
-      return next;
-    });
-  };
-
   const handleAddGrid = () => {
     if (!canvasSize.w || !canvasSize.h) return;
-    const selected =
-      grids.find((g) => g.id === selectedGridId) ?? grids[grids.length - 1];
+    const selected = grids.find((g) => g.id === selectedGridId) ?? grids[grids.length - 1];
     if (!selected) return;
-    const id = nextGridId,
-      offset = Math.max(20, canvasSize.h * 0.08),
-      shiftY = selected.corners.bl.y + offset > canvasSize.h ? -offset : offset;
+    const id = nextGridId;
+    const offset = Math.max(20, canvasSize.h * 0.08);
+    const shiftY = selected.corners.bl.y + offset > canvasSize.h ? -offset : offset;
     const clampY = (y: number) => Math.max(0, Math.min(canvasSize.h, y));
     const shifted = {
-      tl: {
-        x: selected.corners.tl.x,
-        y: clampY(selected.corners.tl.y + shiftY),
-      },
-      tr: {
-        x: selected.corners.tr.x,
-        y: clampY(selected.corners.tr.y + shiftY),
-      },
-      bl: {
-        x: selected.corners.bl.x,
-        y: clampY(selected.corners.bl.y + shiftY),
-      },
-      br: {
-        x: selected.corners.br.x,
-        y: clampY(selected.corners.br.y + shiftY),
-      },
+      tl: { x: selected.corners.tl.x, y: clampY(selected.corners.tl.y + shiftY) },
+      tr: { x: selected.corners.tr.x, y: clampY(selected.corners.tr.y + shiftY) },
+      bl: { x: selected.corners.bl.x, y: clampY(selected.corners.bl.y + shiftY) },
+      br: { x: selected.corners.br.x, y: clampY(selected.corners.br.y + shiftY) },
     };
-    setGrids((prev) => [
-      ...prev,
-      { id, cols: selected.cols, corners: shifted },
-    ]);
+    setGrids((prev) => [...prev, { id, cols: selected.cols, corners: shifted }]);
     setSelectedGridId(id);
     setNextGridId((v) => v + 1);
   };
@@ -359,52 +338,55 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     if (grids.length <= 1 || selectedGridId === null) return;
     const index = grids.findIndex((g) => g.id === selectedGridId);
     if (index < 0) return;
-    const removedId = grids[index].id,
-      remaining = grids.filter((g) => g.id !== removedId);
+    const removedId = grids[index].id;
+    const remaining = grids.filter((g) => g.id !== removedId);
     setGrids(remaining);
     setSelectedGridId(remaining[Math.max(0, index - 1)].id);
     setOverrides((prev) => {
-      const next = new Map<string, number>();
-      for (const [key, value] of prev)
+      const next = new Map<string, ColorOverride>();
+      for (const [key, value] of prev) {
         if (!key.startsWith(`${removedId}-`)) next.set(key, value);
+      }
       return next;
     });
   };
+
   const handleAddColumn = () => {
-    if (selectedGridId !== null)
-      setGrids((prev) =>
-        prev.map((g) =>
-          g.id === selectedGridId ? { ...g, cols: g.cols + 1 } : g,
-        ),
-      );
+    if (selectedGridId !== null) {
+      setGrids((prev) => prev.map((g) => g.id === selectedGridId ? { ...g, cols: g.cols + 1 } : g));
+    }
   };
+
   const handleRemoveColumn = () => {
-    if (selectedGridId !== null)
-      setGrids((prev) =>
-        prev.map((g) =>
-          g.id === selectedGridId ? { ...g, cols: Math.max(1, g.cols - 1) } : g,
-        ),
-      );
+    if (selectedGridId !== null) {
+      setGrids((prev) => prev.map((g) => g.id === selectedGridId ? { ...g, cols: Math.max(1, g.cols - 1) } : g));
+    }
   };
+
   const handleResetGrid = () => {
-    setGrids([
-      { id: 0, cols: 8, corners: initialCorners(canvasSize.w, canvasSize.h) },
-    ]);
+    setGrids([{ id: 0, cols: 8, corners: initialCorners(canvasSize.w, canvasSize.h) }]);
     setSelectedGridId(0);
     setNextGridId(1);
     setOverrides(new Map());
+    setColorPicker(null);
   };
 
   const handleSolveClick = () => {
     setErrorMsg(null);
-    const canvas = canvasRef.current,
-      ctx = canvas?.getContext("2d");
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
     if (!ctx) return;
 
     const tubes: number[][] = [];
     const palette: (RGB | null)[] = [];
     const warnings: string[] = [];
-    const seenUnknown = new Set<string>();
+
+    const getPaletteIndex = (rgb: RGB) => {
+      const idx = palette.findIndex((p) => p && colorDistance(p, rgb) < COLOR_DISTANCE);
+      if (idx >= 0) return idx;
+      palette.push(rgb);
+      return palette.length - 1;
+    };
 
     for (const grid of grids) {
       const points = gridPoints.get(grid.id);
@@ -414,22 +396,29 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         for (let r = 0; r < CAPACITY; r++) {
           const key = cellKey(grid.id, c, r);
           const override = overrides.get(key);
-          if (override !== undefined) {
+          if (override === EMPTY || override === UNKNOWN) {
             tube.push(override);
             continue;
           }
-          const rgb = previewColors.get(key) ?? sampleColorAt(ctx, points[r][c].x, points[r][c].y);
-          const cluster = clusterColors([rgb])[0];
-          if (!cluster) {
+
+          const rgb =
+            override && typeof override === "object"
+              ? override
+              : previewColors.get(key) ?? sampleColorAt(ctx, points[r][c].x, points[r][c].y);
+          const cluster = clusterColors([
+            {
+              gridId: grid.id,
+              col: c,
+              row: r,
+              rgb,
+              value: AUTO,
+            } as GridCell,
+          ]).assignedCells[0]?.value;
+          if (cluster === undefined || cluster === EMPTY || cluster === UNKNOWN) {
             tube.push(UNKNOWN);
             continue;
           }
-          const idx = palette.findIndex((p) => p && cluster && Math.hypot(p.r - cluster.r, p.g - cluster.g, p.b - cluster.b) < 45);
-          if (idx >= 0) tube.push(idx);
-          else {
-            palette.push(cluster);
-            tube.push(palette.length - 1);
-          }
+          tube.push(getPaletteIndex(rgb));
         }
         tubes.push(tube);
       }
@@ -438,15 +427,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const emptyCount = Math.max(0, Math.floor(Number(emptyTubeCount) || 0));
     for (let i = 0; i < emptyCount; i++) tubes.push([EMPTY, EMPTY, EMPTY, EMPTY]);
 
-    for (const tube of tubes) {
-      const unknownCount = tube.filter((v) => v === UNKNOWN).length;
-      if (unknownCount > 0) {
-        const key = tube.join(",");
-        if (!seenUnknown.has(key)) {
-          seenUnknown.add(key);
-          warnings.push("判定できない色があります。グリッド位置や色の上書きを確認してください。");
-        }
-      }
+    if (tubes.some((tube) => tube.includes(UNKNOWN))) {
+      warnings.push("判定できない色があります。グリッド位置や色の上書きを確認してください。");
     }
 
     onConfirm({ tubes, capacity: CAPACITY, paletteRgb: palette, warnings });
@@ -465,9 +447,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasSize.w || !canvasSize.h) return;
     const p = getClientPoint(e);
-    let best:
-      | { gridId: number; corner: Handle; distance: number }
-      | null = null;
+    let best: { gridId: number; corner: Handle; distance: number } | null = null;
 
     for (const grid of grids) {
       const handles: { corner: Handle; point: Point }[] = [
@@ -475,25 +455,14 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         { corner: "tr", point: grid.corners.tr },
         { corner: "bl", point: grid.corners.bl },
         { corner: "br", point: grid.corners.br },
-        {
-          corner: "topCenter",
-          point: {
-            x: (grid.corners.tl.x + grid.corners.tr.x) / 2,
-            y: (grid.corners.tl.y + grid.corners.tr.y) / 2,
-          },
-        },
-        {
-          corner: "bottomCenter",
-          point: {
-            x: (grid.corners.bl.x + grid.corners.br.x) / 2,
-            y: (grid.corners.bl.y + grid.corners.br.y) / 2,
-          },
-        },
+        { corner: "topCenter", point: { x: (grid.corners.tl.x + grid.corners.tr.x) / 2, y: (grid.corners.tl.y + grid.corners.tr.y) / 2 } },
+        { corner: "bottomCenter", point: { x: (grid.corners.bl.x + grid.corners.br.x) / 2, y: (grid.corners.bl.y + grid.corners.br.y) / 2 } },
       ];
       for (const h of handles) {
         const d = Math.hypot(p.x - h.point.x, p.y - h.point.y);
-        if (d <= HANDLE_HIT_R && (!best || d < best.distance))
+        if (d <= HANDLE_HIT_R && (!best || d < best.distance)) {
           best = { gridId: grid.id, corner: h.corner, distance: d };
+        }
       }
     }
 
@@ -518,23 +487,29 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     for (const grid of grids) {
       const points = gridPoints.get(grid.id);
       if (!points) continue;
-      for (let r = 0; r < points.length; r++)
+      for (let r = 0; r < points.length; r++) {
         for (let c = 0; c < points[r].length; c++) {
           const point = points[r][c];
           const d = Math.hypot(p.x - point.x, p.y - point.y);
-          if (d <= CELL_HIT_R && (!bestCell || d < bestCell.distance))
+          if (d <= CELL_HIT_R && (!bestCell || d < bestCell.distance)) {
             bestCell = { gridId: grid.id, col: c, row: r, distance: d };
+          }
         }
+      }
     }
-    if (bestCell) {
-      setSelectedGridId(bestCell.gridId);
-      cycleOverride(bestCell.gridId, bestCell.col, bestCell.row);
-    }
+    if (bestCell) openColorPicker(bestCell.gridId, bestCell.col, bestCell.row);
   };
+
+  const pickerOverride = colorPicker
+    ? overrides.get(cellKey(colorPicker.gridId, colorPicker.col, colorPicker.row))
+    : undefined;
 
   return (
     <div className="space-y-4">
-      <div ref={wrapperRef} className="relative mx-auto w-fit max-w-full overflow-hidden rounded-lg border bg-black/5">
+      <div
+        ref={wrapperRef}
+        className="relative mx-auto w-fit max-w-full overflow-hidden rounded-lg border bg-black/5"
+      >
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}
@@ -552,16 +527,19 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
               <g key={grid.id}>
                 {points.map((row, r) =>
                   row.map((p, c) => {
-                    const rgb = previewColors.get(cellKey(grid.id, c, r));
-                    const override = overrides.get(cellKey(grid.id, c, r));
+                    const key = cellKey(grid.id, c, r);
+                    const rgb = previewColors.get(key);
+                    const override = overrides.get(key);
                     const fill =
                       override === EMPTY
                         ? "#ffffff"
                         : override === UNKNOWN
                           ? "#000000"
-                          : rgb
-                            ? `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`
-                            : "#ffffff";
+                          : override && typeof override === "object"
+                            ? `rgb(${override.r}, ${override.g}, ${override.b})`
+                            : rgb
+                              ? `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`
+                              : "#ffffff";
                     return (
                       <circle
                         key={`${r}-${c}`}
@@ -578,55 +556,49 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                 )}
                 {selected && (
                   <>
-                    <line
-                      x1={grid.corners.tl.x}
-                      y1={grid.corners.tl.y}
-                      x2={grid.corners.tr.x}
-                      y2={grid.corners.tr.y}
-                      stroke="#2563eb"
-                      strokeWidth={1}
-                    />
-                    <line
-                      x1={grid.corners.bl.x}
-                      y1={grid.corners.bl.y}
-                      x2={grid.corners.br.x}
-                      y2={grid.corners.br.y}
-                      stroke="#2563eb"
-                      strokeWidth={1}
-                    />
+                    <line x1={grid.corners.tl.x} y1={grid.corners.tl.y} x2={grid.corners.tr.x} y2={grid.corners.tr.y} stroke="#2563eb" strokeWidth={1} />
+                    <line x1={grid.corners.bl.x} y1={grid.corners.bl.y} x2={grid.corners.br.x} y2={grid.corners.br.y} stroke="#2563eb" strokeWidth={1} />
                     {(["tl", "tr", "bl", "br"] as (keyof Corners)[]).map((key) => (
-                      <circle
-                        key={key}
-                        cx={grid.corners[key].x}
-                        cy={grid.corners[key].y}
-                        r={HANDLE_R}
-                        fill="#ffffff"
-                        stroke="#2563eb"
-                        strokeWidth={2}
-                      />
+                      <circle key={key} cx={grid.corners[key].x} cy={grid.corners[key].y} r={HANDLE_R} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
                     ))}
-                    <circle
-                      cx={(grid.corners.tl.x + grid.corners.tr.x) / 2}
-                      cy={(grid.corners.tl.y + grid.corners.tr.y) / 2}
-                      r={HANDLE_R}
-                      fill="#ffffff"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                    />
-                    <circle
-                      cx={(grid.corners.bl.x + grid.corners.br.x) / 2}
-                      cy={(grid.corners.bl.y + grid.corners.br.y) / 2}
-                      r={HANDLE_R}
-                      fill="#ffffff"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                    />
+                    <circle cx={(grid.corners.tl.x + grid.corners.tr.x) / 2} cy={(grid.corners.tl.y + grid.corners.tr.y) / 2} r={HANDLE_R} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
+                    <circle cx={(grid.corners.bl.x + grid.corners.br.x) / 2} cy={(grid.corners.bl.y + grid.corners.br.y) / 2} r={HANDLE_R} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
                   </>
                 )}
               </g>
             );
           })}
         </svg>
+
+        {colorPicker && (
+          <div className="absolute left-1/2 top-2 z-20 w-[min(320px,calc(100%-16px))] -translate-x-1/2 rounded-lg border bg-white p-3 shadow-lg">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold">色を選択</span>
+              <button type="button" onClick={() => setColorPicker(null)} className="text-sm text-gray-500">閉じる</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {detectedColors.map((rgb, index) => (
+                <button
+                  key={`${rgb.r}-${rgb.g}-${rgb.b}-${index}`}
+                  type="button"
+                  onClick={() => setColorOverride(rgb)}
+                  className="flex items-center gap-2 rounded border px-2 py-1.5 text-left text-sm hover:bg-gray-50"
+                >
+                  <span className="h-5 w-5 rounded-full border" style={{ backgroundColor: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})` }} />
+                  色 {index + 1}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <button type="button" onClick={() => setColorOverride("auto")} className="rounded border px-2 py-1.5 text-sm">自動</button>
+              <button type="button" onClick={() => setColorOverride(EMPTY)} className="rounded border px-2 py-1.5 text-sm">空</button>
+              <button type="button" onClick={() => setColorOverride(UNKNOWN)} className="rounded border px-2 py-1.5 text-sm">不明</button>
+            </div>
+            {pickerOverride && typeof pickerOverride === "object" && (
+              <div className="mt-2 text-xs text-gray-500">この交点は手動指定されています。</div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
