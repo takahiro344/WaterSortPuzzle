@@ -32,7 +32,7 @@ interface Props {
 const HANDLE_R = 3.5;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
-const DRAG_THRESHOLD = 12;
+const DRAG_THRESHOLD = 20;
 const HANDLE_HIT_R = 14;
 const CELL_HIT_R = 10;
 type Handle = keyof Corners | "topCenter" | "bottomCenter";
@@ -98,6 +98,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     corner: Handle;
     startX: number;
     startY: number;
+    startClientX: number;
+    startClientY: number;
     startCorners: Corners;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -169,13 +171,15 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         );
       const dx = x - dragging.startX,
         dy = y - dragging.startY;
+      const clientDx = e.clientX - dragging.startClientX,
+        clientDy = e.clientY - dragging.startClientY;
 
       // A small amount of movement is normal when tapping on a phone.
       // Do not resize the grid until the movement clearly exceeds the
       // drag threshold. This keeps a handle tap available for cycling
       // AUTO -> EMPTY -> UNKNOWN -> AUTO.
       if (!dragMovedRef.current) {
-        if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) return;
+        if (Math.hypot(clientDx, clientDy) <= DRAG_THRESHOLD) return;
         dragMovedRef.current = true;
       }
 
@@ -462,6 +466,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         corner: handle,
         startX: p.x,
         startY: p.y,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
         startCorners: { ...grid.corners },
       });
     };
