@@ -79,25 +79,27 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         };
       }
 
-      if (!circle.classList.contains("corner-handle")) return null;
+      // 四隅のハンドルは、実際にクリックされるのが
+      // class="corner-handle" の小さい円ではなく、その下にある
+      // r=14 の透明なヒット領域なので、r=14 をハンドルとして判定する。
+      if (Number(circle.getAttribute("r")) !== 14) return null;
 
       const handles = Array.from(
-        svg.querySelectorAll<SVGCircleElement>("circle.corner-handle"),
-      );
+        svg.querySelectorAll<SVGCircleElement>("circle[style*='pointer-events']"),
+      ).filter((item) => Number(item.getAttribute("r")) === 14);
       const index = handles.indexOf(circle);
       if (index < 0) return null;
 
-      // GridEditorBase のハンドル描画順:
-      // cols=1 は topCenter / bottomCenter、通常は tl / tr / bl / br。
       const handleCount = handles.length;
       if (handleCount === 2) {
         return { grid, col: 0, row: index === 0 ? 0 : 3 };
       }
+      const cols = hitCircles.length / 4;
       const handleCells: CellRef[] = [
         { grid, col: 0, row: 0 },
-        { grid, col: hitCircles.length / 4 - 1, row: 0 },
+        { grid, col: cols - 1, row: 0 },
         { grid, col: 0, row: 3 },
-        { grid, col: hitCircles.length / 4 - 1, row: 3 },
+        { grid, col: cols - 1, row: 3 },
       ];
       return handleCells[index] ?? null;
     };
@@ -124,16 +126,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
       const radius = Number(circle.getAttribute("r"));
       if (radius === 10) {
-        // 通常の交点はここで BaseGridEditor の状態切り替えを止める。
         event.preventDefault();
         event.stopImmediatePropagation();
         openPicker(cell);
         return;
       }
 
-      if (circle.classList.contains("corner-handle")) {
-        // ハンドルはドラッグを BaseGridEditor に任せる。
-        // pointerup 時に移動量を確認し、タップだけ色選択UIに切り替える。
+      if (radius === 14) {
         pointerStartRef.current.set(event.pointerId, {
           cell,
           clientX: event.clientX,
@@ -155,9 +154,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       );
       if (moved > 20) return;
 
-      // BaseGridEditor は window の pointerup で、ハンドルのタップを
-      // 「自動→空→不明」に切り替える処理として扱っている。
-      // タップ時だけ、その処理を実行させずにドラッグ状態を正常終了させる。
       event.preventDefault();
       event.stopImmediatePropagation();
 
@@ -176,8 +172,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           screenY: event.screenY,
         };
 
-        // BaseGridEditor の dragMovedRef を true にしてから元位置へ戻す。
-        // これにより、実際のグリッド位置は変えずに cycleOverride だけを回避する。
         window.dispatchEvent(
           new PointerEvent("pointermove", {
             ...base,
