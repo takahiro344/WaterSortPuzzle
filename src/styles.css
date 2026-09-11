@@ -81,36 +81,23 @@ body {
   padding: 4px 10px;
 }
 
-/*
- * The image/canvas is responsive on narrow screens.
- * Keep the SVG overlay in exactly the same displayed rectangle as the canvas
- * so the grid does not become offset when the image is scaled down.
- */
 .canvas-wrapper {
   position: relative;
-  width: fit-content !important;
   max-width: 100%;
-  height: auto !important;
-  overflow: hidden;
+  overflow: auto;
   touch-action: none;
   border: 1px solid #ddd;
   margin: 0 auto 12px;
-  line-height: 0;
 }
 
 .canvas-wrapper canvas {
   display: block;
-  width: 100%;
-  height: auto;
-  max-width: 100%;
 }
 
 .grid-overlay {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
   touch-action: none;
 }
 
