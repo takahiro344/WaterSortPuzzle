@@ -30,6 +30,7 @@ interface Props {
 }
 
 const GRID_HEIGHT = 100;
+const GRID_TOP = 180;
 const INITIAL_GRID_COLS = 6;
 
 const HANDLE_R = 4.2;
@@ -108,7 +109,7 @@ function initialCorners(w: number, h: number): Corners {
   const gridW = w * 0.5,
     gridH = GRID_HEIGHT,
     left = (w - gridW) / 2,
-    top = (h - gridH) / 2;
+    top = GRID_TOP;
   return {
     tl: { x: left, y: top },
     tr: { x: left + gridW, y: top },
