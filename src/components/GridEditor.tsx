@@ -26,22 +26,59 @@ interface PointerStart {
 }
 
 function rgbToHex(rgb: RGB): string {
-  const toHex = (value: number) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
+  const toHex = (value: number) =>
+    Math.max(0, Math.min(255, Math.round(value)))
+      .toString(16)
+      .padStart(2, "0");
   return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
 }
 
-function parseRgb(value: string): RGB | null {
-  const match = value.match(/rgb\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)/i);
-  if (!match) return null;
+function hexToRgb(value: string): RGB {
+  const hex = value.replace(/^#/, "");
   return {
-    r: Number(match[1]),
-    g: Number(match[2]),
-    b: Number(match[3]),
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16),
   };
 }
 
 function rgbDistance(a: RGB, b: RGB): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+}
+
+function sampleImageColor(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+): RGB {
+  const radius = 4;
+  const size = radius * 2 + 1;
+  const sx = Math.min(
+    Math.max(0, Math.round(x - radius)),
+    Math.max(0, ctx.canvas.width - size),
+  );
+  const sy = Math.min(
+    Math.max(0, Math.round(y - radius)),
+    Math.max(0, ctx.canvas.height - size),
+  );
+  const data = ctx.getImageData(sx, sy, size, size).data;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+    n++;
+  }
+
+  return {
+    r: Math.round(r / n),
+    g: Math.round(g / n),
+    b: Math.round(b / n),
+  };
 }
 
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
@@ -117,7 +154,15 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       return null;
     };
 
+    // SVGの表示色ではなく、元画像を直接サンプリングする。
+    // グリッドの描画直後でも確実に候補色を取得できるようにする。
     const collectAvailableColors = (): RGB[] => {
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        ".canvas-wrapper canvas",
+      );
+      const ctx = canvas?.getContext("2d");
+      if (!ctx) return [];
+
       const result: RGB[] = [];
       const circles = Array.from(
         document.querySelectorAll<SVGCircleElement>(
@@ -126,8 +171,11 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       );
 
       for (const circle of circles) {
-        const rgb = parseRgb(circle.getAttribute("fill") ?? "");
-        if (!rgb) continue;
+        const x = Number(circle.getAttribute("cx"));
+        const y = Number(circle.getAttribute("cy"));
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+
+        const rgb = sampleImageColor(ctx, x, y);
         if (result.some((existing) => rgbDistance(existing, rgb) < 12)) {
           continue;
         }
@@ -310,9 +358,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const selectedKey = selectedCell
     ? `${selectedCell.grid}-${selectedCell.col}-${selectedCell.row}`
     : "";
-  const selectedOverride = selectedKey
-    ? overridesRef.current.get(selectedKey)
-    : undefined;
 
   return (
     <div style={{ position: "relative" }}>
