@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { GridEditor as BaseGridEditor } from "./GridEditorBase";
-import type { GridConfirmResult } from "./GridEditorBase";
 import type { RGB } from "../types";
+import type { GridConfirmResult } from "./GridEditorBase";
+import { GridEditor as BaseGridEditor } from "./GridEditorBase";
 
 export type { GridConfirmResult } from "./GridEditorBase";
 
@@ -85,6 +85,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [selectedCell, setSelectedCell] = useState<CellRef | null>(null);
   const [color, setColor] = useState("#ff0000");
   const [availableColors, setAvailableColors] = useState<RGB[]>([]);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const colorPickerRef = useRef<HTMLDivElement | null>(null);
   const overridesRef = useRef(new Map<string, string>());
   const pointerStartRef = useRef(new Map<number, PointerStart>());
   const delegatedPointerIdsRef = useRef(new Set<number>());
@@ -95,7 +97,33 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     delegatedPointerIdsRef.current.clear();
     setSelectedCell(null);
     setAvailableColors([]);
+    setIsColorPickerOpen(false);
   }, [image]);
+
+  useEffect(() => {
+    if (!isColorPickerOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !colorPickerRef.current?.contains(target)) {
+        setIsColorPickerOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsColorPickerOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isColorPickerOpen]);
 
   useEffect(() => {
     const findCell = (circle: SVGCircleElement): CellRef | null => {
@@ -154,8 +182,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       return null;
     };
 
-    // SVGの表示色ではなく、元画像を直接サンプリングする。
-    // グリッドの描画直後でも確実に候補色を取得できるようにする。
     const collectAvailableColors = (): RGB[] => {
       const canvas = document.querySelector<HTMLCanvasElement>(
         ".canvas-wrapper canvas",
@@ -378,37 +404,131 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             display: "flex",
             alignItems: "center",
             gap: 8,
-            flexWrap: "wrap",
             maxWidth: "min(720px, calc(100vw - 32px))",
           }}
         >
-          <span>読み込んだ色から選択</span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {availableColors.map((rgb) => {
-              const hex = rgbToHex(rgb);
-              const selected = hex.toLowerCase() === color.toLowerCase();
-              return (
-                <button
-                  key={hex}
-                  type="button"
-                  title={hex}
-                  aria-label={`色 ${hex}`}
-                  onClick={() => setColor(hex)}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    padding: 0,
-                    borderRadius: 6,
-                    border: selected ? "3px solid #000" : "1px solid #888",
-                    background: hex,
-                    cursor: "pointer",
-                  }}
-                />
-              );
-            })}
+          <label id="grid-color-select-label">読み込んだ色から選択</label>
+          <div
+            ref={colorPickerRef}
+            style={{ position: "relative", minWidth: 180 }}
+          >
+            <button
+              id="grid-color-select"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded={isColorPickerOpen}
+              aria-labelledby="grid-color-select-label"
+              onClick={() => setIsColorPickerOpen((open) => !open)}
+              disabled={availableColors.length === 0}
+              style={{
+                width: "100%",
+                height: 36,
+                padding: "4px 32px 4px 8px",
+                display: "flex",
+                alignItems: "center",
+                border: "1px solid #888",
+                borderRadius: 6,
+                background: "#fff",
+                cursor: availableColors.length === 0 ? "default" : "pointer",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 24,
+                  height: 24,
+                  flexShrink: 0,
+                  borderRadius: 4,
+                  border: "1px solid #888",
+                  background: color,
+                }}
+              />
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: 14,
+                  width: 0,
+                  height: 0,
+                  borderLeft: "5px solid transparent",
+                  borderRight: "5px solid transparent",
+                  borderTop: "6px solid #555",
+                }}
+              />
+            </button>
+
+            {isColorPickerOpen && availableColors.length > 0 && (
+              <div
+                role="listbox"
+                aria-label="読み込んだ色"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: "calc(100% + 4px)",
+                  zIndex: 1001,
+                  width: "100%",
+                  maxHeight: 220,
+                  overflowY: "auto",
+                  padding: 6,
+                  boxSizing: "border-box",
+                  background: "#fff",
+                  border: "1px solid #888",
+                  borderRadius: 6,
+                  boxShadow: "0 4px 12px rgba(0,0,0,.2)",
+                }}
+              >
+                {availableColors.map((rgb, index) => {
+                  const hex = rgbToHex(rgb);
+                  const selected = hex.toLowerCase() === color.toLowerCase();
+
+                  return (
+                    <button
+                      key={`${hex}-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      aria-label="この色を選択"
+                      onClick={() => {
+                        setColor(hex);
+                        setIsColorPickerOpen(false);
+                      }}
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        padding: 5,
+                        margin: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        border: selected
+                          ? "2px solid #000"
+                          : "2px solid transparent",
+                        borderRadius: 4,
+                        background: selected ? "#eee" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 30,
+                          height: 30,
+                          flexShrink: 0,
+                          borderRadius: 4,
+                          border: "1px solid #888",
+                          background: hex,
+                        }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           {availableColors.length === 0 && (
-            <span style={{ color: "#666" }}>画像から色を取得できませんでした</span>
+            <span style={{ color: "#666" }}>
+              画像から色を取得できませんでした
+            </span>
           )}
           <button onClick={applyColor} disabled={availableColors.length === 0}>
             適用
