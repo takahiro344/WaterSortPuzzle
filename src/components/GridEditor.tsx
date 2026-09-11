@@ -25,12 +25,18 @@ interface PointerStart {
   dragging: boolean;
 }
 
-function hexToRgb(hex: string): RGB {
-  const value = hex.replace("#", "");
+function rgbToHex(rgb: RGB): string {
+  const toHex = (value: number) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
+  return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
+}
+
+function parseRgb(value: string): RGB | null {
+  const match = value.match(/rgb\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)/i);
+  if (!match) return null;
   return {
-    r: parseInt(value.slice(0, 2), 16),
-    g: parseInt(value.slice(2, 4), 16),
-    b: parseInt(value.slice(4, 6), 16),
+    r: Number(match[1]),
+    g: Number(match[2]),
+    b: Number(match[3]),
   };
 }
 
@@ -41,6 +47,7 @@ function rgbDistance(a: RGB, b: RGB): number {
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [selectedCell, setSelectedCell] = useState<CellRef | null>(null);
   const [color, setColor] = useState("#ff0000");
+  const [availableColors, setAvailableColors] = useState<RGB[]>([]);
   const overridesRef = useRef(new Map<string, string>());
   const pointerStartRef = useRef(new Map<number, PointerStart>());
   const delegatedPointerIdsRef = useRef(new Set<number>());
@@ -50,6 +57,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     pointerStartRef.current.clear();
     delegatedPointerIdsRef.current.clear();
     setSelectedCell(null);
+    setAvailableColors([]);
   }, [image]);
 
   useEffect(() => {
@@ -109,9 +117,32 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       return null;
     };
 
+    const collectAvailableColors = (): RGB[] => {
+      const result: RGB[] = [];
+      const circles = Array.from(
+        document.querySelectorAll<SVGCircleElement>(
+          '.grid-overlay circle[r="4.2"]',
+        ),
+      );
+
+      for (const circle of circles) {
+        const rgb = parseRgb(circle.getAttribute("fill") ?? "");
+        if (!rgb) continue;
+        if (result.some((existing) => rgbDistance(existing, rgb) < 12)) {
+          continue;
+        }
+        result.push(rgb);
+      }
+
+      return result;
+    };
+
     const openPicker = (cell: CellRef) => {
       const key = `${cell.grid}-${cell.col}-${cell.row}`;
-      setColor(overridesRef.current.get(key) ?? "#ff0000");
+      const current = overridesRef.current.get(key);
+      const colors = collectAvailableColors();
+      setAvailableColors(colors);
+      setColor(current ?? (colors[0] ? rgbToHex(colors[0]) : "#ff0000"));
       setSelectedCell(cell);
     };
 
@@ -156,8 +187,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       }
 
       if (radius === 14) {
-        // ここでBase側のpointerdownを止める。
-        // クリックだけならBaseのdragging状態自体を作らない。
         event.preventDefault();
         event.stopImmediatePropagation();
         pointerStartRef.current.set(event.pointerId, {
@@ -180,8 +209,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       );
       if (moved <= 20) return;
 
-      // 20pxを超えた時点で初めてBase側にドラッグを引き継ぐ。
-      // これにより、クリックではBase側のdragging状態が一切残らない。
       dispatchDragStart(start, event);
     };
 
@@ -190,12 +217,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       pointerStartRef.current.delete(event.pointerId);
       if (!start) return;
 
-      if (start.dragging) {
-        // ドラッグとしてBase側に引き継いだ場合は、Base側のpointerupに任せる。
-        return;
-      }
+      if (start.dragging) return;
 
-      // クリックの場合はBase側にpointerupを渡さない。
       event.preventDefault();
       event.stopImmediatePropagation();
       openPicker(start.cell);
@@ -310,16 +333,41 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             display: "flex",
             alignItems: "center",
             gap: 8,
+            flexWrap: "wrap",
+            maxWidth: "min(720px, calc(100vw - 32px))",
           }}
         >
-          <span>色を選択</span>
-          <input
-            type="color"
-            value={selectedOverride ?? color}
-            onChange={(e) => setColor(e.target.value)}
-            autoFocus
-          />
-          <button onClick={applyColor}>適用</button>
+          <span>読み込んだ色から選択</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {availableColors.map((rgb) => {
+              const hex = rgbToHex(rgb);
+              const selected = hex.toLowerCase() === color.toLowerCase();
+              return (
+                <button
+                  key={hex}
+                  type="button"
+                  title={hex}
+                  aria-label={`色 ${hex}`}
+                  onClick={() => setColor(hex)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    padding: 0,
+                    borderRadius: 6,
+                    border: selected ? "3px solid #000" : "1px solid #888",
+                    background: hex,
+                    cursor: "pointer",
+                  }}
+                />
+              );
+            })}
+          </div>
+          {availableColors.length === 0 && (
+            <span style={{ color: "#666" }}>画像から色を取得できませんでした</span>
+          )}
+          <button onClick={applyColor} disabled={availableColors.length === 0}>
+            適用
+          </button>
           <button onClick={resetColor}>自動</button>
           <button onClick={() => setSelectedCell(null)}>キャンセル</button>
         </div>
