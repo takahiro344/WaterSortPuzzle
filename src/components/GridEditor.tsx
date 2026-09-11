@@ -48,11 +48,6 @@ function sampleColorAt(
   x: number,
   y: number,
 ): RGB {
-  // The grid intersection does not have to be exactly at the center of the
-  // water. On phones especially, a few pixels of error are unavoidable.
-  // Sample several small areas around the requested point and prefer the
-  // most "water-like" one. This makes the color recognition tolerant of
-  // small grid-position errors without changing the visible grid itself.
   const candidates = [
     [0, 0],
     [-5, 0],
@@ -98,10 +93,6 @@ function sampleColorAt(
 
   const samples = candidates.map(([dx, dy]) => sample(x + dx, y + dy));
   const center = samples[0];
-
-  // If the center is already sufficiently colorful, keep it. Otherwise use
-  // the nearby area with the strongest chroma. For empty/white areas all
-  // candidates have little chroma, so the original center sample is kept.
   if (center.chroma >= 18) return center.rgb;
 
   let best = center;
@@ -214,10 +205,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const clientDx = e.clientX - dragging.startClientX,
         clientDy = e.clientY - dragging.startClientY;
 
-      // A small amount of movement is normal when tapping on a phone.
-      // Do not resize the grid until the movement clearly exceeds the
-      // drag threshold. This keeps a handle tap available for cycling
-      // AUTO -> EMPTY -> UNKNOWN -> AUTO.
       if (!dragMovedRef.current) {
         if (Math.hypot(clientDx, clientDy) <= DRAG_THRESHOLD) return;
         dragMovedRef.current = true;
@@ -494,11 +481,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const startDrag = (e: React.PointerEvent<SVGCircleElement>) => {
       e.preventDefault();
       e.stopPropagation();
-
-      // Keep the drag associated with the touched handle even when the
-      // pointer moves quickly outside the small visible circle.
       e.currentTarget.setPointerCapture(e.pointerId);
-
       dragMovedRef.current = false;
       setSelectedGridId(grid.id);
       setDragging({
@@ -514,7 +497,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
     return (
       <g key={handle}>
-        {/* Invisible larger hit area for touch devices. */}
         <circle
           cx={p.x}
           cy={p.y}
@@ -524,7 +506,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           style={{ pointerEvents: "all", touchAction: "none" }}
           onPointerDown={startDrag}
         />
-        {/* Keep the visible handle at the same size. */}
         <circle
           className="corner-handle"
           cx={p.x}
@@ -573,21 +554,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           c+
         </button>
         <button onClick={handleResetGrid}>リセット</button>
-        <label>
-          空試験管
-          <input
-            type="number"
-            min={0}
-            value={emptyTubeCount}
-            onChange={(e) => setEmptyTubeCount(e.target.value)}
-            onBlur={() =>
-              setEmptyTubeCount((value) => {
-                const parsed = parseInt(value, 10);
-                return parsed >= 0 ? String(parsed) : "0";
-              })
-            }
-          />
-        </label>
       </div>
       <div
         ref={wrapperRef}
@@ -642,7 +608,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                             : "transparent";
                     return (
                       <g key={key}>
-                        {/* Larger invisible hit area makes cell taps easier on mobile. */}
                         <circle
                           cx={p.x}
                           cy={p.y}
@@ -710,6 +675,23 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         })}
       </div>
       {errorMsg && <div className="error-message">{errorMsg}</div>}
+      <div className="empty-tube-control">
+        <label>
+          空試験管
+          <input
+            type="number"
+            min={0}
+            value={emptyTubeCount}
+            onChange={(e) => setEmptyTubeCount(e.target.value)}
+            onBlur={() =>
+              setEmptyTubeCount((value) => {
+                const parsed = parseInt(value, 10);
+                return parsed >= 0 ? String(parsed) : "0";
+              })
+            }
+          />
+        </label>
+      </div>
       <div className="step-actions">
         <button onClick={onBack}>戻る</button>
         <button className="primary" onClick={handleSolveClick}>
