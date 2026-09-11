@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef } from "react";
 
 interface Props {
   onImageLoaded: (img: HTMLImageElement) => void;
@@ -17,7 +17,7 @@ export const ImageUpload: React.FC<Props> = ({ onImageLoaded }) => {
       };
       reader.readAsDataURL(file);
     },
-    [onImageLoaded]
+    [onImageLoaded],
   );
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,8 +35,13 @@ export const ImageUpload: React.FC<Props> = ({ onImageLoaded }) => {
     <div className="step-panel">
       <h2>(1/3) 画像ファイル選択</h2>
       <ol className="instructions">
-        <li>Water Sort Puzzle で、まだひとつも動かしていない時点でスクリーンショットを撮ってください。スマホのカメラで別のスマホを撮影した画像でも構いません。</li>
-        <li>下のボタンから画像を選択するか、この枠にドラッグ＆ドロップしてください。</li>
+        <li>
+          Water Sort Puzzle
+          で、まだひとつも動かしていない時点でスクリーンショットを撮ってください。スマホのカメラで別のスマホを撮影した画像でも構いません。
+        </li>
+        <li>
+          下のボタンから画像を選択するか、この枠にドラッグ＆ドロップしてください。
+        </li>
       </ol>
       <div
         className="dropzone"
@@ -49,7 +54,7 @@ export const ImageUpload: React.FC<Props> = ({ onImageLoaded }) => {
           ref={inputRef}
           type="file"
           accept="image/*"
-          style={{ display: 'none' }}
+          style={{ display: "none" }}
           onChange={onChange}
         />
       </div>

@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Move, RGB } from '../types';
-import { displayColorFor } from '../paletteDisplay';
+import React, { useEffect, useRef, useState } from "react";
+import { displayColorFor } from "../paletteDisplay";
+import { Move, RGB } from "../types";
 
 interface Props {
   initialTubes: number[][];
@@ -11,7 +11,11 @@ interface Props {
   onRestart: () => void;
 }
 
-function applyMoves(initial: number[][], moves: Move[], upTo: number): number[][] {
+function applyMoves(
+  initial: number[][],
+  moves: Move[],
+  upTo: number,
+): number[][] {
   const tubes = initial.map((t) => t.slice());
   for (let i = 0; i < upTo; i++) {
     const m = moves[i];
@@ -32,15 +36,24 @@ function drawSolution(
   step: number,
   moveCount: number,
 ) {
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
   const dpr = window.devicePixelRatio || 1;
   const width = Math.min(Math.max(320, window.innerWidth - 48), 900);
   const tubeWidth = 42;
   const tubeGap = 18;
-  const rows = Math.ceil(tubes.length / Math.max(1, Math.floor((width + tubeGap) / (tubeWidth + tubeGap))));
-  const columns = Math.max(1, Math.min(tubes.length, Math.floor((width + tubeGap) / (tubeWidth + tubeGap))));
+  const rows = Math.ceil(
+    tubes.length /
+      Math.max(1, Math.floor((width + tubeGap) / (tubeWidth + tubeGap))),
+  );
+  const columns = Math.max(
+    1,
+    Math.min(
+      tubes.length,
+      Math.floor((width + tubeGap) / (tubeWidth + tubeGap)),
+    ),
+  );
   const rowHeight = capacity * 34 + 42;
   const height = Math.max(150, rows * rowHeight + 20);
 
@@ -70,13 +83,18 @@ function drawSolution(
 
     ctx.save();
     ctx.lineWidth = isFrom || isTo ? 4 : 2;
-    ctx.strokeStyle = isFrom ? '#e74c3c' : isTo ? '#27ae60' : '#333';
+    ctx.strokeStyle = isFrom ? "#e74c3c" : isTo ? "#27ae60" : "#333";
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x, y + tubeHeight - 12);
     ctx.quadraticCurveTo(x, y + tubeHeight, x + 12, y + tubeHeight);
     ctx.lineTo(x + tubeWidth - 12, y + tubeHeight);
-    ctx.quadraticCurveTo(x + tubeWidth, y + tubeHeight, x + tubeWidth, y + tubeHeight - 12);
+    ctx.quadraticCurveTo(
+      x + tubeWidth,
+      y + tubeHeight,
+      x + tubeWidth,
+      y + tubeHeight - 12,
+    );
     ctx.lineTo(x + tubeWidth, y);
     ctx.stroke();
 
@@ -90,9 +108,9 @@ function drawSolution(
       ctx.fillRect(x + 2, slotY + 1, tubeWidth - 4, 28);
     }
 
-    ctx.font = '12px sans-serif';
-    ctx.fillStyle = '#666';
-    ctx.textAlign = 'center';
+    ctx.font = "12px sans-serif";
+    ctx.fillStyle = "#666";
+    ctx.textAlign = "center";
     ctx.fillText(`#${i + 1}`, x + tubeWidth / 2, y + tubeHeight + 17);
     ctx.restore();
   }
@@ -106,8 +124,8 @@ function drawSolution(
     const arrowY = Math.max(4, Math.min(fromY, toY) - 2);
 
     ctx.save();
-    ctx.strokeStyle = '#222';
-    ctx.fillStyle = '#222';
+    ctx.strokeStyle = "#222";
+    ctx.fillStyle = "#222";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(fromX, arrowY + 8);
@@ -116,18 +134,28 @@ function drawSolution(
     const angle = Math.atan2(arrowY + 8 - (arrowY - 1), toX - (toX - 8));
     ctx.beginPath();
     ctx.moveTo(toX, arrowY + 8);
-    ctx.lineTo(toX - 9 * Math.cos(angle - Math.PI / 6), arrowY + 8 - 9 * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(toX - 9 * Math.cos(angle + Math.PI / 6), arrowY + 8 - 9 * Math.sin(angle + Math.PI / 6));
+    ctx.lineTo(
+      toX - 9 * Math.cos(angle - Math.PI / 6),
+      arrowY + 8 - 9 * Math.sin(angle - Math.PI / 6),
+    );
+    ctx.lineTo(
+      toX - 9 * Math.cos(angle + Math.PI / 6),
+      arrowY + 8 - 9 * Math.sin(angle + Math.PI / 6),
+    );
     ctx.closePath();
     ctx.fill();
     ctx.restore();
   }
 
   ctx.save();
-  ctx.font = '13px sans-serif';
-  ctx.fillStyle = '#666';
-  ctx.textAlign = 'right';
-  ctx.fillText(`${Math.min(step, moveCount)} / ${moveCount}`, width - 8, height - 4);
+  ctx.font = "13px sans-serif";
+  ctx.fillStyle = "#666";
+  ctx.textAlign = "right";
+  ctx.fillText(
+    `${Math.min(step, moveCount)} / ${moveCount}`,
+    width - 8,
+    height - 4,
+  );
   ctx.restore();
 }
 
@@ -147,10 +175,19 @@ export const SolutionViewer: React.FC<Props> = ({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const redraw = () => drawSolution(canvas, tubesNow, capacity, paletteRgb, currentMove, step, moves.length);
+    const redraw = () =>
+      drawSolution(
+        canvas,
+        tubesNow,
+        capacity,
+        paletteRgb,
+        currentMove,
+        step,
+        moves.length,
+      );
     redraw();
-    window.addEventListener('resize', redraw);
-    return () => window.removeEventListener('resize', redraw);
+    window.addEventListener("resize", redraw);
+    return () => window.removeEventListener("resize", redraw);
   }, [tubesNow, capacity, paletteRgb, currentMove, step, moves.length]);
 
   return (
