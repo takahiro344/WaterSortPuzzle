@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Move, RGB } from '../types';
-import { displayColorFor } from '../paletteDisplay';
+import React, { useEffect, useRef, useState } from "react";
+import { displayColorFor } from "../paletteDisplay";
+import { Move, RGB } from "../types";
 
 interface Props {
   initialTubes: number[][];
@@ -11,7 +11,11 @@ interface Props {
   onRestart: () => void;
 }
 
-function applyMoves(initial: number[][], moves: Move[], upTo: number): number[][] {
+function applyMoves(
+  initial: number[][],
+  moves: Move[],
+  upTo: number,
+): number[][] {
   const tubes = initial.map((t) => t.slice());
   for (let i = 0; i < upTo; i++) {
     const m = moves[i];
@@ -32,7 +36,7 @@ function drawSolution(
   step: number,
   moveCount: number,
 ) {
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
   const dpr = window.devicePixelRatio || 1;
@@ -72,13 +76,18 @@ function drawSolution(
 
     ctx.save();
     ctx.lineWidth = isFrom || isTo ? 4 : 2;
-    ctx.strokeStyle = isFrom ? '#e74c3c' : isTo ? '#27ae60' : '#333';
+    ctx.strokeStyle = isFrom ? "#e74c3c" : isTo ? "#27ae60" : "#333";
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x, y + tubeHeight - 12);
     ctx.quadraticCurveTo(x, y + tubeHeight, x + 12, y + tubeHeight);
     ctx.lineTo(x + tubeWidth - 12, y + tubeHeight);
-    ctx.quadraticCurveTo(x + tubeWidth, y + tubeHeight, x + tubeWidth, y + tubeHeight - 12);
+    ctx.quadraticCurveTo(
+      x + tubeWidth,
+      y + tubeHeight,
+      x + tubeWidth,
+      y + tubeHeight - 12,
+    );
     ctx.lineTo(x + tubeWidth, y);
     ctx.stroke();
 
@@ -92,9 +101,9 @@ function drawSolution(
       ctx.fillRect(x + 2, slotY + 1, tubeWidth - 4, 28);
     }
 
-    ctx.font = '12px sans-serif';
-    ctx.fillStyle = '#666';
-    ctx.textAlign = 'center';
+    ctx.font = "12px sans-serif";
+    ctx.fillStyle = "#666";
+    ctx.textAlign = "center";
     ctx.fillText(`#${i + 1}`, x + tubeWidth / 2, y + tubeHeight + 17);
     ctx.restore();
   }
@@ -113,8 +122,8 @@ function drawSolution(
     const controlY = Math.max(4, Math.min(fromTopY, toTopY) - 18);
 
     ctx.save();
-    ctx.strokeStyle = '#222';
-    ctx.fillStyle = '#222';
+    ctx.strokeStyle = "#222";
+    ctx.fillStyle = "#222";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(fromX, startY);
@@ -124,18 +133,28 @@ function drawSolution(
     const angle = Math.atan2(endY - controlY, toX - midX);
     ctx.beginPath();
     ctx.moveTo(toX, endY);
-    ctx.lineTo(toX - 9 * Math.cos(angle - Math.PI / 6), endY - 9 * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(toX - 9 * Math.cos(angle + Math.PI / 6), endY - 9 * Math.sin(angle + Math.PI / 6));
+    ctx.lineTo(
+      toX - 9 * Math.cos(angle - Math.PI / 6),
+      endY - 9 * Math.sin(angle - Math.PI / 6),
+    );
+    ctx.lineTo(
+      toX - 9 * Math.cos(angle + Math.PI / 6),
+      endY - 9 * Math.sin(angle + Math.PI / 6),
+    );
     ctx.closePath();
     ctx.fill();
     ctx.restore();
   }
 
   ctx.save();
-  ctx.font = '13px sans-serif';
-  ctx.fillStyle = '#666';
-  ctx.textAlign = 'right';
-  ctx.fillText(`${Math.min(step, moveCount)} / ${moveCount}`, width - 8, height - 4);
+  ctx.font = "13px sans-serif";
+  ctx.fillStyle = "#666";
+  ctx.textAlign = "right";
+  ctx.fillText(
+    `${Math.min(step, moveCount)} / ${moveCount}`,
+    width - 8,
+    height - 4,
+  );
   ctx.restore();
 }
 
@@ -156,14 +175,28 @@ export const SolutionViewer: React.FC<Props> = ({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const redraw = () => drawSolution(canvas, tubesNow, capacity, paletteRgb, currentMove, step, moves.length);
+    const redraw = () =>
+      drawSolution(
+        canvas,
+        tubesNow,
+        capacity,
+        paletteRgb,
+        currentMove,
+        step,
+        moves.length,
+      );
     redraw();
-    window.addEventListener('resize', redraw);
-    return () => window.removeEventListener('resize', redraw);
+    window.addEventListener("resize", redraw);
+    return () => window.removeEventListener("resize", redraw);
   }, [tubesNow, capacity, paletteRgb, currentMove, step, moves.length]);
 
-  const scrollToBottom = () => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  const scrollToTop = () => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  const scrollToBottom = () =>
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  const scrollToTop = () =>
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
   return (
     <div className="step-panel">
@@ -172,11 +205,15 @@ export const SolutionViewer: React.FC<Props> = ({
       {moves.length === 0 ? (
         <p>すでに揃っています。動かす手はありません。</p>
       ) : (
-        <p>解けました。手順を表示しますので [+] / [-] ボタンで進めてください。</p>
+        <p>
+          解けました。手順を表示しますので [+] / [-] ボタンで進めてください。
+        </p>
       )}
 
       <div className="solution-scroll-controls">
-        <button onClick={scrollToBottom} aria-label="下へスクロール">▼</button>
+        <button onClick={scrollToBottom} aria-label="下へスクロール">
+          ▼
+        </button>
       </div>
 
       <div className="solution-canvas-wrapper" ref={scrollRef}>
@@ -184,7 +221,9 @@ export const SolutionViewer: React.FC<Props> = ({
       </div>
 
       <div className="solution-scroll-controls">
-        <button onClick={scrollToTop} aria-label="上へスクロール">▲</button>
+        <button onClick={scrollToTop} aria-label="上へスクロール">
+          ▲
+        </button>
       </div>
 
       {currentMove && (

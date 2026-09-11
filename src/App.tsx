@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { ImageUpload } from './components/ImageUpload';
-import { GridEditor, GridConfirmResult } from './components/GridEditor';
-import { SolutionViewer } from './components/SolutionViewer';
-import { solve } from './solver';
-import { Move, RGB } from './types';
+import React, { useState } from "react";
+import { GridConfirmResult, GridEditor } from "./components/GridEditor";
+import { ImageUpload } from "./components/ImageUpload";
+import { SolutionViewer } from "./components/SolutionViewer";
+import { solve } from "./solver";
+import { Move, RGB } from "./types";
 
-type Step = 'upload' | 'grid' | 'result';
+type Step = "upload" | "grid" | "result";
 
 interface ResultData {
   tubes: number[][];
@@ -18,14 +18,14 @@ interface ResultData {
 }
 
 export const App: React.FC = () => {
-  const [step, setStep] = useState<Step>('upload');
+  const [step, setStep] = useState<Step>("upload");
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [result, setResult] = useState<ResultData | null>(null);
   const [solving, setSolving] = useState(false);
 
   const handleImageLoaded = (img: HTMLImageElement) => {
     setImage(img);
-    setStep('grid');
+    setStep("grid");
   };
 
   const handleGridConfirm = async (data: GridConfirmResult) => {
@@ -43,26 +43,32 @@ export const App: React.FC = () => {
       message: solveResult.message,
     });
     setSolving(false);
-    setStep('result');
+    setStep("result");
   };
 
   const restart = () => {
     setImage(null);
     setResult(null);
-    setStep('upload');
+    setStep("upload");
   };
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>Water Sort Puzzle を解く</h1>
-        <p className="subtitle">画像認識 + 不明色1つまで推測対応（TypeScript / React 版）</p>
+        <p className="subtitle">
+          画像認識 + 不明色1つまで推測対応（TypeScript / React 版）
+        </p>
       </header>
 
-      {step === 'upload' && <ImageUpload onImageLoaded={handleImageLoaded} />}
+      {step === "upload" && <ImageUpload onImageLoaded={handleImageLoaded} />}
 
-      {step === 'grid' && image && (
-        <GridEditor image={image} onBack={restart} onConfirm={handleGridConfirm} />
+      {step === "grid" && image && (
+        <GridEditor
+          image={image}
+          onBack={restart}
+          onConfirm={handleGridConfirm}
+        />
       )}
 
       {solving && (
@@ -71,7 +77,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {step === 'result' && result && !solving && (
+      {step === "result" && result && !solving && (
         <>
           {result.warnings.length > 0 && (
             <div className="warning-box">
@@ -86,18 +92,22 @@ export const App: React.FC = () => {
               capacity={result.capacity}
               moves={result.moves}
               paletteRgb={result.paletteRgb}
-              onBack={() => setStep('grid')}
+              onBack={() => setStep("grid")}
               onRestart={restart}
             />
           ) : (
             <div className="step-panel">
               <h2>(3/3) 解答</h2>
-              <p className="error-msg">解けませんでした。{result.message ?? ''}</p>
+              <p className="error-msg">
+                解けませんでした。{result.message ?? ""}
+              </p>
               <p>
                 読み取ったグリッドの色（特に「不明」セルの推測結果）や、空の試験管の数が正しいか確認してください。
               </p>
               <div className="button-row">
-                <button onClick={() => setStep('grid')}>グリッドを調整し直す</button>
+                <button onClick={() => setStep("grid")}>
+                  グリッドを調整し直す
+                </button>
                 <button onClick={restart}>最初から</button>
               </div>
             </div>
@@ -108,7 +118,11 @@ export const App: React.FC = () => {
       <footer className="app-footer">
         <p>
           画像はブラウザ内でのみ処理され、サーバーへは送信されません。オリジナルサイト（
-          <a href="https://baclips.com/solve-water-sort-puzzle/" target="_blank" rel="noreferrer">
+          <a
+            href="https://baclips.com/solve-water-sort-puzzle/"
+            target="_blank"
+            rel="noreferrer"
+          >
             baclips.com
           </a>
           ）の仕様をベースに、色が1つだけ不明でも解けるよう拡張した非公式版です。

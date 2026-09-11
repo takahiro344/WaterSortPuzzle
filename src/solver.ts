@@ -1,5 +1,5 @@
-import { Move, PuzzleState, SolveResult, Tube } from './types';
-import { PriorityQueue } from './priorityQueue';
+import { PriorityQueue } from "./priorityQueue";
+import { Move, PuzzleState, SolveResult, Tube } from "./types";
 
 const MAX_STATES = 400000; // 探索ノード数の上限（無限ループ防止）
 
@@ -9,7 +9,7 @@ function cloneTubes(tubes: Tube[]): Tube[] {
 
 function serialize(tubes: Tube[]): string {
   // 各試験管内は順序が意味を持つが、試験管同士の並びは元の入力順を保持したまま比較する
-  return tubes.map((t) => t.join(',')).join('|');
+  return tubes.map((t) => t.join(",")).join("|");
 }
 
 function topRun(tube: Tube): { color: number; amount: number } | null {
@@ -121,7 +121,12 @@ export function solve(state: PuzzleState): SolveResult {
     explored++;
 
     if (explored > MAX_STATES) {
-      return { solvable: false, moves: [], statesExplored: explored, message: '探索が上限に達しました（解が見つかりませんでした）。' };
+      return {
+        solvable: false,
+        moves: [],
+        statesExplored: explored,
+        message: "探索が上限に達しました（解が見つかりませんでした）。",
+      };
     }
 
     if (isGoal(node.tubes, capacity)) {
@@ -151,5 +156,10 @@ export function solve(state: PuzzleState): SolveResult {
     }
   }
 
-  return { solvable: false, moves: [], statesExplored: explored, message: '解が見つかりませんでした。読み取った色を確認してください。' };
+  return {
+    solvable: false,
+    moves: [],
+    statesExplored: explored,
+    message: "解が見つかりませんでした。読み取った色を確認してください。",
+  };
 }

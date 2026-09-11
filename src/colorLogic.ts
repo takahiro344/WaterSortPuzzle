@@ -1,4 +1,4 @@
-import { AUTO, EMPTY, GridCell, RGB, UNKNOWN } from './types';
+import { EMPTY, GridCell, RGB, UNKNOWN } from "./types";
 
 function colorDistance(a: RGB, b: RGB): number {
   const dr = a.r - b.r;
@@ -21,20 +21,40 @@ export interface ClusterResult {
 // すでに手動で EMPTY / UNKNOWN が指定されているセルはそのまま尊重する。
 export function clusterColors(cells: GridCell[]): ClusterResult {
   const palette: RGB[] = [];
-  const assignedCells: { gridId: number; col: number; row: number; value: number }[] = [];
+  const assignedCells: {
+    gridId: number;
+    col: number;
+    row: number;
+    value: number;
+  }[] = [];
 
   for (const cell of cells) {
     if (cell.value === EMPTY || cell.value === UNKNOWN) {
-      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: cell.value });
+      assignedCells.push({
+        gridId: cell.gridId,
+        col: cell.col,
+        row: cell.row,
+        value: cell.value,
+      });
       continue;
     }
     if (!cell.rgb) {
-      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: EMPTY });
+      assignedCells.push({
+        gridId: cell.gridId,
+        col: cell.col,
+        row: cell.row,
+        value: EMPTY,
+      });
       continue;
     }
     const brightness = (cell.rgb.r + cell.rgb.g + cell.rgb.b) / 3;
     if (brightness <= EMPTY_BRIGHTNESS_MAX) {
-      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: EMPTY });
+      assignedCells.push({
+        gridId: cell.gridId,
+        col: cell.col,
+        row: cell.row,
+        value: EMPTY,
+      });
       continue;
     }
     let matched = -1;
@@ -47,10 +67,20 @@ export function clusterColors(cells: GridCell[]): ClusterResult {
       }
     }
     if (matched !== -1 && bestDist <= CLUSTER_THRESHOLD) {
-      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: matched });
+      assignedCells.push({
+        gridId: cell.gridId,
+        col: cell.col,
+        row: cell.row,
+        value: matched,
+      });
     } else {
       palette.push(cell.rgb);
-      assignedCells.push({ gridId: cell.gridId, col: cell.col, row: cell.row, value: palette.length - 1 });
+      assignedCells.push({
+        gridId: cell.gridId,
+        col: cell.col,
+        row: cell.row,
+        value: palette.length - 1,
+      });
     }
   }
 
@@ -67,14 +97,18 @@ export interface InferResult {
 // 消去法で不明セルの色を推測する。
 export function inferUnknownColor(
   values: number[], // EMPTY / UNKNOWN を含む全セルの値の配列
-  capacity: number
+  capacity: number,
 ): InferResult {
   const unknownCount = values.filter((v) => v === UNKNOWN).length;
   if (unknownCount === 0) {
-    return { ok: true, inferredColor: null, message: '不明セルはありません。' };
+    return { ok: true, inferredColor: null, message: "不明セルはありません。" };
   }
   if (unknownCount > 1) {
-    return { ok: false, inferredColor: null, message: '不明セルは1個までしか推測できません。' };
+    return {
+      ok: false,
+      inferredColor: null,
+      message: "不明セルは1個までしか推測できません。",
+    };
   }
 
   const counts = new Map<number, number>();
@@ -105,14 +139,16 @@ export function inferUnknownColor(
     return {
       ok: true,
       inferredColor: newColorId,
-      message: '既知の色では過不足が見つからなかったため、未検出の新しい色として補完しました。',
+      message:
+        "既知の色では過不足が見つからなかったため、未検出の新しい色として補完しました。",
     };
   }
   if (short.length > 1) {
     return {
       ok: false,
       inferredColor: null,
-      message: '出現数が1個足りない色が複数あり、一意に推測できませんでした。グリッドの読み取りを確認してください。',
+      message:
+        "出現数が1個足りない色が複数あり、一意に推測できませんでした。グリッドの読み取りを確認してください。",
     };
   }
 
