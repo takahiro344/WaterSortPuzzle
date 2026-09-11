@@ -33,6 +33,8 @@ const HANDLE_R = 3.5;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
 const DRAG_THRESHOLD = 3;
+const HANDLE_HIT_R = 14;
+const CELL_HIT_R = 10;
 type Handle = keyof Corners | "topCenter" | "bottomCenter";
 
 function lerp(a: Point, b: Point, t: number): Point {
@@ -435,31 +437,49 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           : preview
             ? `rgb(${preview.r}, ${preview.g}, ${preview.b})`
             : "transparent";
+    const startDrag = (e: React.PointerEvent<SVGCircleElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Keep the drag associated with the touched handle even when the
+      // pointer moves quickly outside the small visible circle.
+      e.currentTarget.setPointerCapture(e.pointerId);
+
+      dragMovedRef.current = false;
+      setSelectedGridId(grid.id);
+      setDragging({
+        gridId: grid.id,
+        corner: handle,
+        startX: p.x,
+        startY: p.y,
+        startCorners: { ...grid.corners },
+      });
+    };
+
     return (
-      <circle
-        key={handle}
-        className="corner-handle"
-        cx={p.x}
-        cy={p.y}
-        r={HANDLE_R}
-        fill={fill}
-        style={{ pointerEvents: "all" }}
-        stroke={override === UNKNOWN ? "#000" : "#fff"}
-        strokeWidth={1.5}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dragMovedRef.current = false;
-          setSelectedGridId(grid.id);
-          setDragging({
-            gridId: grid.id,
-            corner: handle,
-            startX: p.x,
-            startY: p.y,
-            startCorners: { ...grid.corners },
-          });
-        }}
-      />
+      <g key={handle}>
+        {/* Invisible larger hit area for touch devices. */}
+        <circle
+          cx={p.x}
+          cy={p.y}
+          r={HANDLE_HIT_R}
+          fill="transparent"
+          stroke="none"
+          style={{ pointerEvents: "all", touchAction: "none" }}
+          onPointerDown={startDrag}
+        />
+        {/* Keep the visible handle at the same size. */}
+        <circle
+          className="corner-handle"
+          cx={p.x}
+          cy={p.y}
+          r={HANDLE_R}
+          fill={fill}
+          style={{ pointerEvents: "none" }}
+          stroke={override === UNKNOWN ? "#000" : "#fff"}
+          strokeWidth={1.5}
+        />
+      </g>
     );
   };
 
@@ -561,25 +581,37 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                             ? `rgb(${preview.r}, ${preview.g}, ${preview.b})`
                             : "transparent";
                     return (
-                      <circle
-                        key={key}
-                        cx={p.x}
-                        cy={p.y}
-                        r={3.5}
-                        fill={fill}
-                        stroke={
-                          value === UNKNOWN
-                            ? "#000"
-                            : selected
-                              ? "#fff"
-                              : "#888"
-                        }
-                        strokeWidth={1}
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          cycleOverride(grid.id, c, r);
-                        }}
-                      />
+                      <g key={key}>
+                        {/* Larger invisible hit area makes cell taps easier on mobile. */}
+                        <circle
+                          cx={p.x}
+                          cy={p.y}
+                          r={CELL_HIT_R}
+                          fill="transparent"
+                          stroke="none"
+                          style={{ pointerEvents: "all", touchAction: "none" }}
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            cycleOverride(grid.id, c, r);
+                          }}
+                        />
+                        <circle
+                          cx={p.x}
+                          cy={p.y}
+                          r={3.5}
+                          fill={fill}
+                          stroke={
+                            value === UNKNOWN
+                              ? "#000"
+                              : selected
+                                ? "#fff"
+                                : "#888"
+                          }
+                          strokeWidth={1}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      </g>
                     );
                   }),
                 )}
