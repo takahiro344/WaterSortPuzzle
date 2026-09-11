@@ -11,6 +11,7 @@ interface Props { image: HTMLImageElement; onBack: () => void; onConfirm: (resul
 const HANDLE_R = 3.5;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
+const DRAG_THRESHOLD = 3;
 type Handle = keyof Corners | "topCenter" | "bottomCenter";
 
 function lerp(a: Point, b: Point, t: number): Point { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
@@ -32,6 +33,7 @@ function initialCorners(w: number, h: number): Corners {
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const dragMovedRef = useRef(false);
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
   const [grids, setGrids] = useState<GridConfig[]>([]);
   const [selectedGridId, setSelectedGridId] = useState<number | null>(null);
@@ -77,7 +79,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const rect = wrapper.getBoundingClientRect();
       const scaleX = rect.width > 0 ? canvasSize.w / rect.width : 1, scaleY = rect.height > 0 ? canvasSize.h / rect.height : 1;
       const x = Math.min(Math.max((e.clientX - rect.left) * scaleX, 0), canvasSize.w), y = Math.min(Math.max((e.clientY - rect.top) * scaleY, 0), canvasSize.h);
-      const dx = x - dragging.startX, dy = y - dragging.startY, corner = dragging.corner;
+      const dx = x - dragging.startX, dy = y - dragging.startY;
+      if (Math.hypot(dx, dy) > DRAG_THRESHOLD) dragMovedRef.current = true;
+      const corner = dragging.corner;
       setGrids(prev => prev.map(grid => {
         if (grid.id !== dragging.gridId) return grid;
         const nextCorners = { ...dragging.startCorners };
@@ -94,10 +98,19 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         return { ...grid, corners: nextCorners };
       }));
     };
-    const onUp = () => setDragging(null);
+    const onUp = () => {
+      if (!dragMovedRef.current) {
+        const corner = dragging.corner;
+        const col = corner === "tl" || corner === "bl" ? 0 : corner === "tr" || corner === "br" ? (grids.find(g => g.id === dragging.gridId)?.cols ?? 1) - 1 : 0;
+        const row = corner === "tl" || corner === "tr" || corner === "topCenter" ? 0 : CAPACITY - 1;
+        cycleOverride(dragging.gridId, col, row);
+      }
+      dragMovedRef.current = false;
+      setDragging(null);
+    };
     window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
     return () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
-  }, [dragging, canvasSize]);
+  }, [dragging, canvasSize, grids]);
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d"); if (!ctx || gridPoints.size === 0) return;
@@ -175,10 +188,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const override = overrides.get(key) ?? AUTO;
     const fill = override === EMPTY ? "transparent" : override === UNKNOWN ? "#fff" : preview ? `rgb(${preview.r}, ${preview.g}, ${preview.b})` : "transparent";
     return <circle key={handle} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill={fill} style={{ pointerEvents: "all" }} stroke={override === UNKNOWN ? "#000" : "#fff"} strokeWidth={1.5}
-      onPointerDown={e => { e.stopPropagation(); cycleOverride(grid.id, handle === "tl" || handle === "bl" ? 0 : handle === "tr" || handle === "br" ? grid.cols - 1 : 0, handle === "tl" || handle === "tr" || handle === "topCenter" ? 0 : CAPACITY - 1); }}
-      onPointerMove={e => { if (e.buttons !== 0) return; }}
-      onDoubleClick={e => { e.stopPropagation(); }}
-      onPointerDownCapture={e => { e.stopPropagation(); setDragging({ gridId: grid.id, corner: handle, startX: p.x, startY: p.y, startCorners: { ...grid.corners } }); cycleOverride(grid.id, handle === "tl" || handle === "bl" ? 0 : handle === "tr" || handle === "br" ? grid.cols - 1 : 0, handle === "tl" || handle === "tr" || handle === "topCenter" ? 0 : CAPACITY - 1); }} />;
+      onPointerDown={e => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragMovedRef.current = false;
+        setSelectedGridId(grid.id);
+        setDragging({ gridId: grid.id, corner: handle, startX: p.x, startY: p.y, startCorners: { ...grid.corners } });
+      }} />;
   };
 
   return (
