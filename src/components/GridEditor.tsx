@@ -25,9 +25,19 @@ function sampleColorAt(ctx: CanvasRenderingContext2D, x: number, y: number): RGB
   for (let i = 0; i < data.length; i += 4) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
   return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
 }
+
+// 初期グリッドだけを画像の50%サイズにする。画像の表示サイズ自体は変更しない。
 function initialCorners(w: number, h: number): Corners {
-  const marginX = w * 0.08, marginY = h * 0.08;
-  return { tl: { x: marginX, y: marginY }, tr: { x: w - marginX, y: marginY }, bl: { x: marginX, y: h - marginY }, br: { x: w - marginX, y: h - marginY } };
+  const gridW = w * 0.5;
+  const gridH = h * 0.5;
+  const left = (w - gridW) / 2;
+  const top = (h - gridH) / 2;
+  return {
+    tl: { x: left, y: top },
+    tr: { x: left + gridW, y: top },
+    bl: { x: left, y: top + gridH },
+    br: { x: left + gridW, y: top + gridH }
+  };
 }
 
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
@@ -44,10 +54,11 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [previewColors, setPreviewColors] = useState<Map<string, RGB>>(new Map());
 
   useEffect(() => {
+    // 画像の表示サイズは従来どおり。ここでは初期グリッドのサイズだけを50%にする。
     const maxW = Math.min(900, image.naturalWidth);
     const scale = maxW / image.naturalWidth;
-    const w = Math.round(image.naturalWidth * scale * 0.5);
-    const h = Math.round(image.naturalHeight * scale * 0.5);
+    const w = Math.round(image.naturalWidth * scale);
+    const h = Math.round(image.naturalHeight * scale);
     setCanvasSize({ w, h });
     const canvas = canvasRef.current;
     if (!canvas) return;
