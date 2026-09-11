@@ -412,8 +412,10 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     if (
       inference.inferredColor !== null &&
       inference.inferredColor >= palette.length
-    )
-      paletteRgb.push(null);
+    ) {
+      const unknownCell = cells.find((cell) => cell.value === UNKNOWN);
+      paletteRgb[inference.inferredColor] = unknownCell?.rgb ?? null;
+    }
     onConfirm({ tubes, capacity: CAPACITY, paletteRgb, warnings });
   };
 
