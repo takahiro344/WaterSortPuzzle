@@ -8,7 +8,7 @@ interface GridConfig { id: number; cols: number; corners: Corners; }
 export interface GridConfirmResult { tubes: number[][]; capacity: number; paletteRgb: (RGB | null)[]; warnings: string[]; }
 interface Props { image: HTMLImageElement; onBack: () => void; onConfirm: (result: GridConfirmResult) => void; }
 
-const HANDLE_R = 9;
+const HANDLE_R = 3.5;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
 
@@ -184,7 +184,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           {points.map((row, r) => <line key={`h-${grid.id}-${r}`} className="grid-line" x1={row[0].x} y1={row[0].y} x2={row[row.length - 1].x} y2={row[row.length - 1].y} />)}
           {points[0]?.map((_, c) => <line key={`v-${grid.id}-${c}`} className="grid-line" x1={points[0][c].x} y1={points[0][c].y} x2={points[points.length - 1][c].x} y2={points[points.length - 1][c].y} />)}
           {points.map((row, r) => row.map((p, c) => { const key = cellKey(grid.id, c, r), value = overrides.get(key) ?? AUTO, preview = previewColors.get(key); const fill = value === EMPTY ? 'transparent' : value === UNKNOWN ? '#fff' : preview ? `rgb(${preview.r}, ${preview.g}, ${preview.b})` : 'transparent'; return <circle key={key} cx={p.x} cy={p.y} r={3.5} fill={fill} stroke={value === UNKNOWN ? '#000' : selected ? '#fff' : '#888'} strokeWidth={1} onPointerDown={e => { e.stopPropagation(); cycleOverride(grid.id, c, r); }}/>; }))}
-          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={3} onPointerDown={e => { e.stopPropagation(); const rect = wrapperRef.current?.getBoundingClientRect(); if (!rect) return; const sx = rect.width > 0 ? canvasSize.w / rect.width : 1; const sy = rect.height > 0 ? canvasSize.h / rect.height : 1; setDragging({ gridId: grid.id, corner, startX: p.x, startY: p.y, startCorners: { ...grid.corners } }); }}/>)}</>}
+          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={1.5} onPointerDown={e => { e.stopPropagation(); setDragging({ gridId: grid.id, corner, startX: p.x, startY: p.y, startCorners: { ...grid.corners } }); }}/>)}</>}
         </svg>
       </React.Fragment>; })}
     </div>
