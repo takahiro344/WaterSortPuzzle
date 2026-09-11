@@ -179,10 +179,14 @@ button:disabled {
 
 .solution-canvas-wrapper {
   width: 100%;
+  max-height: 60vh;
   overflow-x: auto;
+  overflow-y: auto;
   display: flex;
   justify-content: center;
-  margin: 12px 0;
+  margin: 4px 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
 }
 
 .solution-canvas-wrapper canvas {
@@ -191,13 +195,26 @@ button:disabled {
   height: auto;
 }
 
+.solution-scroll-controls {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0;
+}
+
+.solution-scroll-controls button {
+  min-width: 40px;
+  padding: 2px 10px;
+  font-size: 0.9rem;
+}
+
 .solution-controls {
   display: flex;
   justify-content: center;
+  gap: 12px;
   margin: 8px 0 12px;
 }
 
-.solution-next-button {
+.solution-step-button {
   min-width: 52px;
   min-height: 40px;
   font-size: 1.25rem;
