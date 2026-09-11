@@ -69,6 +69,7 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  justify-content: center;
   margin-bottom: 12px;
   font-size: 0.9rem;
 }
@@ -83,7 +84,7 @@ body {
   overflow: auto;
   touch-action: none;
   border: 1px solid #ddd;
-  margin-bottom: 12px;
+  margin: 0 auto 12px;
 }
 
 .canvas-wrapper canvas {
