@@ -176,7 +176,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
 
         const rgb = sampleImageColor(ctx, x, y);
-        if (result.some((existing) => rgbDistance(existing, rgb) < 12)) {
+        if (result.some((existing) => rgbDistance(existing, rgb) <= 36)) {
           continue;
         }
         result.push(rgb);
