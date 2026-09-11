@@ -92,7 +92,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [selectedGridId, setSelectedGridId] = useState<number | null>(null);
   const [nextGridId, setNextGridId] = useState(1);
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
-  const [emptyTubeCount, setEmptyTubeCount] = useState(0);
+  const [emptyTubeCount, setEmptyTubeCount] = useState("0");
   const [dragging, setDragging] = useState<{
     gridId: number;
     corner: Handle;
@@ -409,7 +409,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         }
         tubes.push(tube);
       }
-    for (let i = 0; i < emptyTubeCount; i++) tubes.push([]);
+    const emptyTubeCountValue = Math.max(0, parseInt(emptyTubeCount, 10) || 0);
+    for (let i = 0; i < emptyTubeCountValue; i++) tubes.push([]);
     const paletteRgb: (RGB | null)[] = palette.slice();
     if (
       inference.inferredColor !== null &&
@@ -523,8 +524,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             type="number"
             min={0}
             value={emptyTubeCount}
-            onChange={(e) =>
-              setEmptyTubeCount(Math.max(0, Number(e.target.value) || 0))
+            onChange={(e) => setEmptyTubeCount(e.target.value)}
+            onBlur={() =>
+              setEmptyTubeCount((value) => {
+                const parsed = parseInt(value, 10);
+                return parsed >= 0 ? String(parsed) : "0";
+              })
             }
           />
         </label>
