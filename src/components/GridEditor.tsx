@@ -42,8 +42,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
   useEffect(() => {
     const findCell = (target: EventTarget | null): CellRef | null => {
-      const path = target instanceof EventTarget ? [] : [];
-      void path;
       const circle = target instanceof SVGCircleElement ? target : null;
       if (!circle || Number(circle.getAttribute("r")) !== 10) return null;
 
