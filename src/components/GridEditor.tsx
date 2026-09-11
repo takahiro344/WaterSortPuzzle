@@ -31,7 +31,10 @@ function initialCorners(w: number, h: number): Corners {
   const gridH = h * 0.5;
   const left = (w - gridW) / 2;
   const top = (h - gridH) / 2;
-  return { tl: { x: left, y: top }, tr: { x: left + gridW, y: top }, bl: { x: left, y: top + gridH }, br: { x: left + gridW, y: top + gridH } };
+  return {
+    tl: { x: left, y: top }, tr: { x: left + gridW, y: top },
+    bl: { x: left, y: top + gridH }, br: { x: left + gridW, y: top + gridH }
+  };
 }
 
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
@@ -59,7 +62,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(image, 0, 0, w, h);
-    const grid = { id: 0, cols: detectFirstRowTubeCount(ctx, w, h), corners: initialCorners(w, h) };
+    const grid = { id: 0, cols: 8, corners: initialCorners(w, h) };
     setGrids([grid]); setSelectedGridId(0); setNextGridId(1); setOverrides(new Map()); setPreviewColors(new Map()); setErrorMsg(null);
   }, [image]);
 
@@ -154,7 +157,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   };
   const handleAddColumn = () => { if (selectedGridId !== null) setGrids(prev => prev.map(g => g.id === selectedGridId ? { ...g, cols: g.cols + 1 } : g)); };
   const handleRemoveColumn = () => { if (selectedGridId !== null) setGrids(prev => prev.map(g => g.id === selectedGridId ? { ...g, cols: Math.max(1, g.cols - 1) } : g)); };
-  const handleResetGrid = () => { const grid = { id: 0, cols: detectFirstRowTubeCount(canvasRef.current?.getContext('2d') as CanvasRenderingContext2D, canvasSize.w, canvasSize.h), corners: initialCorners(canvasSize.w, canvasSize.h) }; setGrids([grid]); setSelectedGridId(0); setNextGridId(1); setOverrides(new Map()); };
+  const handleResetGrid = () => { const grid = { id: 0, cols: 8, corners: initialCorners(canvasSize.w, canvasSize.h) }; setGrids([grid]); setSelectedGridId(0); setNextGridId(1); setOverrides(new Map()); };
 
   const handleSolveClick = () => {
     setErrorMsg(null); const canvas = canvasRef.current, ctx = canvas?.getContext('2d'); if (!canvas || !ctx || !grids.length) return;
@@ -180,39 +183,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         <svg className="grid-overlay" width={canvasSize.w} height={canvasSize.h} onPointerDown={() => setSelectedGridId(grid.id)}>
           {points.map((row, r) => <line key={`h-${grid.id}-${r}`} className="grid-line" x1={row[0].x} y1={row[0].y} x2={row[row.length - 1].x} y2={row[row.length - 1].y} />)}
           {points[0]?.map((_, c) => <line key={`v-${grid.id}-${c}`} className="grid-line" x1={points[0][c].x} y1={points[0][c].y} x2={points[points.length - 1][c].x} y2={points[points.length - 1][c].y} />)}
-          {points.map((row, r) => row.map((p, c) => { const key = cellKey(grid.id, c, r), value = overrides.get(key) ?? AUTO, preview = previewColors.get(key); const fill = value === EMPTY ? '#fff' : value === UNKNOWN ? '#ff00ff' : preview ? `rgb(${preview.r},${preview.g},${preview.b})` : '#ccc'; return <circle key={key} cx={p.x} cy={p.y} r={3.5} fill={fill} stroke={value === UNKNOWN ? '#000' : selected ? '#fff' : '#888'} strokeWidth={1} onPointerDown={e => { e.stopPropagation(); cycleOverride(grid.id, c, r); }} />; }))}
-          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={1.5} onPointerDown={e => { e.stopPropagation(); setDragging({ gridId: grid.id, corner, startX: p.x, startY: p.y, startCorners: { ...grid.corners } }); }} />)}</>}
+          {points.map((row, r) => row.map((p, c) => { const key = cellKey(grid.id, c, r), value = overrides.get(key) ?? AUTO, preview = previewColors.get(key); const fill = value === EMPTY ? 'transparent' : value === UNKNOWN ? '#fff' : preview ? `rgb(${preview.r}, ${preview.g}, ${preview.b})` : 'transparent'; return <circle key={key} cx={p.x} cy={p.y} r={3.5} fill={fill} stroke={value === UNKNOWN ? '#000' : selected ? '#fff' : '#888'} strokeWidth={1} onPointerDown={e => { e.stopPropagation(); cycleOverride(grid.id, c, r); }}/>; }))}
+          {selected && <>{(Object.entries(grid.corners) as [keyof Corners, Point][]).map(([corner, p]) => <circle key={corner} className="corner-handle" cx={p.x} cy={p.y} r={HANDLE_R} fill="none" stroke="#00ffff" strokeWidth={1.5} onPointerDown={e => { e.stopPropagation(); setDragging({ gridId: grid.id, corner, startX: p.x, startY: p.y, startCorners: { ...grid.corners } }); }}/>)}</>}
         </svg>
       </React.Fragment>; })}
     </div>
     {errorMsg && <div className="error-message">{errorMsg}</div>}
-    <div className="step-actions"><button onClick={onBack}>戻る</button><button onClick={handleSolveClick}>解答</button></div>
+    <div className="step-actions"><button onClick={onBack}>戻る</button><button className="primary" onClick={handleSolveClick}>解く</button></div>
   </div>;
 };
-
-function detectFirstRowTubeCount(ctx: CanvasRenderingContext2D, w: number, h: number): number {
-  const y = Math.round(h * 0.5);
-  const runs: { start: number; end: number }[] = [];
-  let inRun = false;
-  let start = 0;
-  for (let x = Math.round(w * 0.05); x < Math.round(w * 0.95); x += 2) {
-    const d = ctx.getImageData(x, y, 1, 1).data;
-    const max = Math.max(d[0], d[1], d[2]);
-    const min = Math.min(d[0], d[1], d[2]);
-    const isColor = max - min >= 25 && max >= 70;
-    if (isColor && !inRun) { start = x; inRun = true; }
-    if (!isColor && inRun) {
-      if (x - start >= 6) runs.push({ start, end: x });
-      inRun = false;
-    }
-  }
-  if (inRun) runs.push({ start, end: Math.round(w * 0.95) });
-  if (!runs.length) return 8;
-  const merged: { start: number; end: number }[] = [runs[0]];
-  for (const run of runs.slice(1)) {
-    const last = merged[merged.length - 1];
-    if (run.start - last.end <= 30) last.end = Math.max(last.end, run.end);
-    else merged.push(run);
-  }
-  return Math.max(1, Math.min(20, merged.length));
-}
