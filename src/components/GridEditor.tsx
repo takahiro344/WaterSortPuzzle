@@ -33,6 +33,8 @@ const HANDLE_R = 3.5;
 const SAMPLE_RADIUS = 4;
 const CAPACITY = 4;
 
+type Handle = keyof Corners | "topCenter" | "bottomCenter";
+
 function lerp(a: Point, b: Point, t: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
@@ -91,7 +93,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [emptyTubeCount, setEmptyTubeCount] = useState(0);
   const [dragging, setDragging] = useState<{
     gridId: number;
-    corner: keyof Corners;
+    corner: Handle;
     startX: number;
     startY: number;
     startCorners: Corners;
@@ -164,34 +166,57 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const dx = x - dragging.startX;
       const dy = y - dragging.startY;
       const corner = dragging.corner;
-      const moveHorizontal =
-        corner === "tl" || corner === "bl" ? "left" : "right";
-      const moveVertical =
-        corner === "tl" || corner === "tr" ? "top" : "bottom";
       setGrids((prev) =>
         prev.map((grid) => {
           if (grid.id !== dragging.gridId) return grid;
           const nextCorners = { ...dragging.startCorners };
-          const horizontalCorners: (keyof Corners)[] =
-            moveHorizontal === "left" ? ["tl", "bl"] : ["tr", "br"];
-          const verticalCorners: (keyof Corners)[] =
-            moveVertical === "top" ? ["tl", "tr"] : ["bl", "br"];
-          for (const key of horizontalCorners)
-            nextCorners[key] = {
-              ...nextCorners[key],
-              x: Math.max(
-                0,
-                Math.min(canvasSize.w, dragging.startCorners[key].x + dx),
-              ),
-            };
-          for (const key of verticalCorners)
-            nextCorners[key] = {
-              ...nextCorners[key],
-              y: Math.max(
-                0,
-                Math.min(canvasSize.h, dragging.startCorners[key].y + dy),
-              ),
-            };
+
+          if (corner === "topCenter" || corner === "bottomCenter") {
+            const horizontalCorners: (keyof Corners)[] = ["tl", "tr", "bl", "br"];
+            const verticalCorners: (keyof Corners)[] =
+              corner === "topCenter" ? ["tl", "tr"] : ["bl", "br"];
+            for (const key of horizontalCorners)
+              nextCorners[key] = {
+                ...nextCorners[key],
+                x: Math.max(
+                  0,
+                  Math.min(canvasSize.w, dragging.startCorners[key].x + dx),
+                ),
+              };
+            for (const key of verticalCorners)
+              nextCorners[key] = {
+                ...nextCorners[key],
+                y: Math.max(
+                  0,
+                  Math.min(canvasSize.h, dragging.startCorners[key].y + dy),
+                ),
+              };
+          } else {
+            const moveHorizontal =
+              corner === "tl" || corner === "bl" ? "left" : "right";
+            const moveVertical =
+              corner === "tl" || corner === "tr" ? "top" : "bottom";
+            const horizontalCorners: (keyof Corners)[] =
+              moveHorizontal === "left" ? ["tl", "bl"] : ["tr", "br"];
+            const verticalCorners: (keyof Corners)[] =
+              moveVertical === "top" ? ["tl", "tr"] : ["bl", "br"];
+            for (const key of horizontalCorners)
+              nextCorners[key] = {
+                ...nextCorners[key],
+                x: Math.max(
+                  0,
+                  Math.min(canvasSize.w, dragging.startCorners[key].x + dx),
+                ),
+              };
+            for (const key of verticalCorners)
+              nextCorners[key] = {
+                ...nextCorners[key],
+                y: Math.max(
+                  0,
+                  Math.min(canvasSize.h, dragging.startCorners[key].y + dy),
+                ),
+              };
+          }
           return { ...grid, corners: nextCorners };
         }),
       );
@@ -510,34 +535,68 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                     );
                   }),
                 )}
-                {selected && (
-                  <>
-                    {(
-                      Object.entries(grid.corners) as [keyof Corners, Point][]
-                    ).map(([corner, p]) => (
-                      <circle
-                        key={corner}
-                        className="corner-handle"
-                        cx={p.x}
-                        cy={p.y}
-                        r={HANDLE_R}
-                        fill="none"
-                        stroke="#00ffff"
-                        strokeWidth={1.5}
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          setDragging({
-                            gridId: grid.id,
-                            corner,
-                            startX: p.x,
-                            startY: p.y,
-                            startCorners: { ...grid.corners },
-                          });
-                        }}
-                      />
-                    ))}
-                  </>
-                )}
+                {selected &&
+                  (grid.cols === 1 ? (
+                    <>
+                      {(["topCenter", "bottomCenter"] as Handle[]).map(
+                        (handle) => {
+                          const p =
+                            handle === "topCenter"
+                              ? bilinear(grid.corners, 0.5, 0)
+                              : bilinear(grid.corners, 0.5, 1);
+                          return (
+                            <circle
+                              key={handle}
+                              className="corner-handle"
+                              cx={p.x}
+                              cy={p.y}
+                              r={HANDLE_R}
+                              fill="none"
+                              stroke="#00ffff"
+                              strokeWidth={1.5}
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                setDragging({
+                                  gridId: grid.id,
+                                  corner: handle,
+                                  startX: p.x,
+                                  startY: p.y,
+                                  startCorners: { ...grid.corners },
+                                });
+                              }}
+                            />
+                          );
+                        },
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {(
+                        Object.entries(grid.corners) as [keyof Corners, Point][]
+                      ).map(([corner, p]) => (
+                        <circle
+                          key={corner}
+                          className="corner-handle"
+                          cx={p.x}
+                          cy={p.y}
+                          r={HANDLE_R}
+                          fill="none"
+                          stroke="#00ffff"
+                          strokeWidth={1.5}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            setDragging({
+                              gridId: grid.id,
+                              corner,
+                              startX: p.x,
+                              startY: p.y,
+                              startCorners: { ...grid.corners },
+                            });
+                          }}
+                        />
+                      ))}
+                    </>
+                  ))}
               </svg>
             </React.Fragment>
           );
