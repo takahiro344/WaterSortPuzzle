@@ -261,32 +261,52 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const ctx = canvas?.getContext("2d");
       if (!ctx) return [];
 
-      // 同系色を1つの色グループとしてまとめ、各グループの出現数も数える。
-      // Water Sort は1色につき4マスなので、4マス以上確認できている色は
-      // すでに明確に判定できている色として、色選択肢から除外する。
+      // 交点ごとに「現在表示されている色」を集計する。
+      // 手動指定済みの交点は overridesRef の色を優先することで、
+      // 「画像判定3個 + 手動指定1個 = 4個」のようなケースも正しく数える。
       const colorGroups: { color: RGB; count: number }[] = [];
-      const circles = Array.from(
-        document.querySelectorAll<SVGCircleElement>(
-          '.grid-overlay circle[r="4.2"]',
-        ),
+      const grids = Array.from(
+        document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
       );
 
-      for (const circle of circles) {
-        const x = Number(circle.getAttribute("cx"));
-        const y = Number(circle.getAttribute("cy"));
-        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-
-        const rgb = sampleImageColor(ctx, x, y);
-        const group = colorGroups.find(
-          (existing) => rgbDistance(existing.color, rgb) <= 36,
+      grids.forEach((svg, grid) => {
+        const hitCircles = Array.from(
+          svg.querySelectorAll<SVGCircleElement>('circle[r="10"]'),
         );
-        if (group) {
-          group.count++;
-        } else {
-          colorGroups.push({ color: rgb, count: 1 });
-        }
-      }
+        const circles = Array.from(
+          svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
+        );
+        const cols = Math.max(1, hitCircles.length / 4);
 
+        circles.forEach((circle, index) => {
+          const x = Number(circle.getAttribute("cx"));
+          const y = Number(circle.getAttribute("cy"));
+          if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+          const cell: CellRef = {
+            grid,
+            col: index % cols,
+            row: Math.floor(index / cols),
+          };
+          const key = `${cell.grid}-${cell.col}-${cell.row}`;
+          const override = overridesRef.current.get(key);
+          const rgb = override
+            ? hexToRgb(override)
+            : sampleImageColor(ctx, x, y);
+
+          const group = colorGroups.find(
+            (existing) => rgbDistance(existing.color, rgb) <= 36,
+          );
+          if (group) {
+            group.count++;
+          } else {
+            colorGroups.push({ color: rgb, count: 1 });
+          }
+        });
+      });
+
+      // Water Sort は1色につき4マスなので、4個に達した色は
+      // 次に手動指定する候補から除外する。
       return colorGroups
         .filter((group) => group.count < 4)
         .map((group) => group.color);
