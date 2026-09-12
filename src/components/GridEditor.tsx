@@ -510,8 +510,31 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
   const resetColor = () => {
     if (!selectedCell) return;
+
     const key = `${selectedCell.grid}-${selectedCell.col}-${selectedCell.row}`;
     overridesRef.current.delete(key);
+
+    // 手動指定を解除し、画像から自動判定した色を表示する。
+    const autoColor = sampleCellColor(selectedCell);
+    if (autoColor) {
+      const grids = Array.from(
+        document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
+      );
+      const svg = grids[selectedCell.grid];
+      if (svg) {
+        const hitCircles = Array.from(
+          svg.querySelectorAll<SVGCircleElement>('circle[r="10"]'),
+        );
+        const cols = Math.max(1, hitCircles.length / 4);
+        const circles = Array.from(
+          svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
+        );
+        const circle = circles[selectedCell.row * cols + selectedCell.col];
+        circle?.setAttribute("fill", rgbToHex(autoColor));
+      }
+    }
+
+    setColor(autoColor ? rgbToHex(autoColor) : "#ff0000");
     setSelectedCell(null);
   };
 
@@ -725,7 +748,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             onClick={resetColor}
             style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
           >
-            自動
+            自動判定に戻す
           </button>
         </div>
       )}
