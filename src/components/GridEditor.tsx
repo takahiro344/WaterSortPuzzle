@@ -78,6 +78,10 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [color, setColor] = useState("#ff0000");
   const [availableColors, setAvailableColors] = useState<RGB[]>([]);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const [colorPickerPosition, setColorPickerPosition] = useState({
+    left: 0,
+    top: 0,
+  });
   const colorPickerRef = useRef<HTMLDivElement | null>(null);
   const overridesRef = useRef(new Map<string, string>());
 
@@ -132,18 +136,20 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   }, []);
 
   useEffect(() => {
-    if (!isColorPickerOpen) return;
+    if (!selectedCell) return;
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Node && !colorPickerRef.current?.contains(target)) {
         setIsColorPickerOpen(false);
+        setSelectedCell(null);
       }
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsColorPickerOpen(false);
+        setSelectedCell(null);
       }
     };
 
@@ -154,7 +160,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isColorPickerOpen]);
+  }, [selectedCell]);
 
   const sampleCellColor = (cell: CellRef): RGB | null => {
     const key = `${cell.grid}-${cell.col}-${cell.row}`;
@@ -292,6 +298,27 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const colors = collectAvailableColors();
       setAvailableColors(colors);
       setColor(current ?? (colors[0] ? rgbToHex(colors[0]) : "#ff0000"));
+
+      // 色選択UIを、クリックした交点の少し上に表示する。
+      const grids = Array.from(
+        document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
+      );
+      const svg = grids[cell.grid];
+      if (svg) {
+        const hitCircles = Array.from(
+          svg.querySelectorAll<SVGCircleElement>('circle[r="10"]'),
+        );
+        const cols = Math.max(1, hitCircles.length / 4);
+        const hitCircle = hitCircles[cell.row * cols + cell.col];
+        if (hitCircle) {
+          const rect = hitCircle.getBoundingClientRect();
+          setColorPickerPosition({
+            left: rect.left + rect.width / 2,
+            top: rect.top - 8,
+          });
+        }
+      }
+
       setSelectedCell(cell);
     };
 
@@ -342,6 +369,11 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const delegatedPointerIds = new Set<number>();
 
     const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && colorPickerRef.current?.contains(target)) {
+        return;
+      }
+
       if (delegatedPointerIds.has(event.pointerId)) {
         delegatedPointerIds.delete(event.pointerId);
         return;
@@ -539,28 +571,27 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       <BaseGridEditor image={image} onBack={onBack} onConfirm={handleConfirm} />
       {selectedCell && (
         <div
+          ref={colorPickerRef}
           style={{
             position: "fixed",
-            left: "50%",
-            top: 20,
-            transform: "translateX(-50%)",
+            left: colorPickerPosition.left,
+            top: colorPickerPosition.top,
+            transform: "translate(-50%, -100%)",
             zIndex: 1000,
             padding: 10,
             background: "#fff",
             border: "1px solid #ccc",
-            borderRadius: 8,
+            borderRadius: 5,
             boxShadow: "0 4px 16px rgba(0,0,0,.2)",
             display: "flex",
             alignItems: "center",
             gap: 6,
+            fontSize: 14,
             maxWidth: "min(720px, calc(100vw - 32px))",
           }}
         >
           <label id="grid-color-select-label">候補色</label>
-          <div
-            ref={colorPickerRef}
-            style={{ position: "relative", minWidth: 72 }}
-          >
+          <div style={{ position: "relative", minWidth: 72 }}>
             <button
               id="grid-color-select"
               type="button"
@@ -587,7 +618,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                   width: 19,
                   height: 19,
                   flexShrink: 0,
-                  borderRadius: 4,
+                  borderRadius: 3,
                   border: "1px solid #888",
                   background: color,
                 }}
@@ -596,8 +627,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                 aria-hidden="true"
                 style={{
                   position: "absolute",
-                  right: 10,
-                  top: 14,
+                  right: 8,
+                  top: 11,
                   width: 0,
                   height: 0,
                   borderLeft: "4px solid transparent",
@@ -614,7 +645,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                 style={{
                   position: "absolute",
                   left: 0,
-                  top: "calc(100% + 4px)",
+                  top: "calc(100% + 3px)",
                   zIndex: 1001,
                   width: "100%",
                   maxHeight: 176,
@@ -652,7 +683,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                         border: selected
                           ? "2px solid #000"
                           : "2px solid transparent",
-                        borderRadius: 4,
+                        borderRadius: 3,
                         background: selected ? "#eee" : "#fff",
                         cursor: "pointer",
                       }}
@@ -660,10 +691,10 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                       <span
                         aria-hidden="true"
                         style={{
-                          width: 30,
-                          height: 30,
+                          width: 24,
+                          height: 24,
                           flexShrink: 0,
-                          borderRadius: 4,
+                          borderRadius: 3,
                           border: "1px solid #888",
                           background: hex,
                         }}
@@ -685,23 +716,16 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             type="button"
             onClick={applyColor}
             disabled={availableColors.length === 0}
-            style={{ whiteSpace: "nowrap" }}
+            style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
           >
             適用
           </button>
           <button
             type="button"
             onClick={resetColor}
-            style={{ whiteSpace: "nowrap" }}
+            style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
           >
             自動
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedCell(null)}
-            style={{ whiteSpace: "nowrap" }}
-          >
-            キャンセル
           </button>
         </div>
       )}
