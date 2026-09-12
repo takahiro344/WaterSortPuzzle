@@ -103,7 +103,7 @@ body {
 
 .grid-line {
   fill: none;
-  stroke: rgba(0, 200, 255, 0.85);
+  stroke: #fff;
   stroke-width: 1.5;
 }
 
@@ -216,47 +216,4 @@ button:disabled {
   display: block;
   max-width: 100%;
   height: auto;
-}
-
-.solution-scroll-controls {
-  display: flex;
-  justify-content: center;
-  margin: 4px 0;
-}
-
-.solution-scroll-controls button {
-  min-width: 40px;
-  padding: 2px 10px;
-  font-size: 0.9rem;
-}
-
-.solution-controls {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin: 8px 0 12px;
-}
-
-.solution-step-button {
-  min-width: 52px;
-  min-height: 40px;
-  font-size: 1.25rem;
-  font-weight: bold;
-}
-
-.move-desc {
-  text-align: center;
-  font-weight: bold;
-  margin: 4px 0 8px;
-}
-
-.app-footer {
-  text-align: center;
-  font-size: 0.75rem;
-  color: #888;
-  padding: 16px 0 32px;
-}
-
-.app-footer a {
-  color: #2b7fff;
 }
