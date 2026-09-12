@@ -542,8 +542,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           で選択中のグリッドの縦線を追加・削除できます。
         </li>
         <li>
-          交点をクリックすると 自動 → 空 → 不明 → 自動
-          の順に切り替わります（不明は1箇所まで）。
+          交点をクリックすると候補となる色の選択ボックスが表示されるので、色を選択し、
+          「適用」ボタンを押してください。
         </li>
       </ol>
       <div className="grid-controls">

@@ -88,6 +88,49 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     setIsColorPickerOpen(false);
   }, [image]);
 
+  // BaseGridEditor owns the actual SVG grid rendering, so reflect color-picker
+  // selections onto its visible intersection circles without changing the
+  // existing AUTO / EMPTY / UNKNOWN editing behavior.
+  useEffect(() => {
+    const applyDisplayOverrides = () => {
+      const grids = Array.from(
+        document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
+      );
+
+      for (const [key, hex] of overridesRef.current) {
+        const [gridIndex, col, row] = key.split("-").map(Number);
+        const svg = grids[gridIndex];
+        if (!svg) continue;
+
+        const hitCircles = Array.from(
+          svg.querySelectorAll<SVGCircleElement>('circle[r="10"]'),
+        );
+        const cols = Math.max(1, hitCircles.length / 4);
+        const circles = Array.from(
+          svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
+        );
+        const circle = circles[row * cols + col];
+        if (circle && circle.getAttribute("fill") !== hex) {
+          circle.setAttribute("fill", hex);
+        }
+      }
+    };
+
+    const observer = new MutationObserver(applyDisplayOverrides);
+    const canvasWrapper = document.querySelector(".canvas-wrapper");
+    if (canvasWrapper) {
+      observer.observe(canvasWrapper, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["cx", "cy", "r", "fill"],
+      });
+    }
+
+    applyDisplayOverrides();
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!isColorPickerOpen) return;
 
@@ -413,6 +456,23 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     if (!selectedCell) return;
     const key = `${selectedCell.grid}-${selectedCell.col}-${selectedCell.row}`;
     overridesRef.current.set(key, color);
+
+    const grids = Array.from(
+      document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
+    );
+    const svg = grids[selectedCell.grid];
+    if (svg) {
+      const hitCircles = Array.from(
+        svg.querySelectorAll<SVGCircleElement>('circle[r="10"]'),
+      );
+      const cols = Math.max(1, hitCircles.length / 4);
+      const circles = Array.from(
+        svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
+      );
+      const circle = circles[selectedCell.row * cols + selectedCell.col];
+      circle?.setAttribute("fill", color);
+    }
+
     setSelectedCell(null);
   };
 
@@ -494,13 +554,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             alignItems: "center",
             gap: 8,
             maxWidth: "min(720px, calc(100vw - 32px))",
-            whiteSpace: "nowrap",
           }}
         >
-          <label id="grid-color-select-label">色を選択</label>
+          <label id="grid-color-select-label">候補色</label>
           <div
             ref={colorPickerRef}
-            style={{ position: "relative", width: 180, flexShrink: 0 }}
+            style={{ position: "relative", minWidth: 180 }}
           >
             <button
               id="grid-color-select"
@@ -626,13 +685,22 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             type="button"
             onClick={applyColor}
             disabled={availableColors.length === 0}
+            style={{ whiteSpace: "nowrap" }}
           >
             適用
           </button>
-          <button type="button" onClick={resetColor}>
+          <button
+            type="button"
+            onClick={resetColor}
+            style={{ whiteSpace: "nowrap" }}
+          >
             自動
           </button>
-          <button type="button" onClick={() => setSelectedCell(null)}>
+          <button
+            type="button"
+            onClick={() => setSelectedCell(null)}
+            style={{ whiteSpace: "nowrap" }}
+          >
             キャンセル
           </button>
         </div>
