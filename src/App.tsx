@@ -56,9 +56,6 @@ export const App: React.FC = () => {
     <div className="app">
       <header className="app-header">
         <h1>Water Sort Puzzle を解く</h1>
-        <p className="subtitle">
-          画像認識 + 不明色1つまで推測対応（TypeScript / React 版）
-        </p>
       </header>
 
       {step === "upload" && <ImageUpload onImageLoaded={handleImageLoaded} />}
