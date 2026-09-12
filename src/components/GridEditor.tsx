@@ -494,12 +494,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             alignItems: "center",
             gap: 8,
             maxWidth: "min(720px, calc(100vw - 32px))",
+            whiteSpace: "nowrap",
           }}
         >
-          <label id="grid-color-select-label">読み込んだ色から選択</label>
+          <label id="grid-color-select-label">色を選択</label>
           <div
             ref={colorPickerRef}
-            style={{ position: "relative", minWidth: 180 }}
+            style={{ position: "relative", width: 180, flexShrink: 0 }}
           >
             <button
               id="grid-color-select"
