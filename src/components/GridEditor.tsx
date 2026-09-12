@@ -545,21 +545,21 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             top: 20,
             transform: "translateX(-50%)",
             zIndex: 1000,
-            padding: 12,
+            padding: 10,
             background: "#fff",
             border: "1px solid #ccc",
             borderRadius: 8,
             boxShadow: "0 4px 16px rgba(0,0,0,.2)",
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            gap: 6,
             maxWidth: "min(720px, calc(100vw - 32px))",
           }}
         >
           <label id="grid-color-select-label">候補色</label>
           <div
             ref={colorPickerRef}
-            style={{ position: "relative", minWidth: 180 }}
+            style={{ position: "relative", minWidth: 72 }}
           >
             <button
               id="grid-color-select"
@@ -571,12 +571,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
               disabled={availableColors.length === 0}
               style={{
                 width: "100%",
-                height: 36,
-                padding: "4px 32px 4px 8px",
+                height: 29,
+                padding: "3px 26px 3px 6px",
                 display: "flex",
                 alignItems: "center",
                 border: "1px solid #888",
-                borderRadius: 6,
+                borderRadius: 5,
                 background: "#fff",
                 cursor: availableColors.length === 0 ? "default" : "pointer",
               }}
@@ -584,8 +584,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
               <span
                 aria-hidden="true"
                 style={{
-                  width: 24,
-                  height: 24,
+                  width: 19,
+                  height: 19,
                   flexShrink: 0,
                   borderRadius: 4,
                   border: "1px solid #888",
@@ -600,9 +600,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                   top: 14,
                   width: 0,
                   height: 0,
-                  borderLeft: "5px solid transparent",
-                  borderRight: "5px solid transparent",
-                  borderTop: "6px solid #555",
+                  borderLeft: "4px solid transparent",
+                  borderRight: "4px solid transparent",
+                  borderTop: "5px solid #555",
                 }}
               />
             </button>
@@ -617,13 +617,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                   top: "calc(100% + 4px)",
                   zIndex: 1001,
                   width: "100%",
-                  maxHeight: 220,
+                  maxHeight: 176,
                   overflowY: "auto",
-                  padding: 6,
+                  padding: 4,
                   boxSizing: "border-box",
                   background: "#fff",
                   border: "1px solid #888",
-                  borderRadius: 6,
+                  borderRadius: 5,
                   boxShadow: "0 4px 12px rgba(0,0,0,.2)",
                 }}
               >
@@ -644,8 +644,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                       }}
                       style={{
                         width: "100%",
-                        height: 40,
-                        padding: 5,
+                        height: 32,
+                        padding: 4,
                         margin: 0,
                         display: "flex",
                         alignItems: "center",
