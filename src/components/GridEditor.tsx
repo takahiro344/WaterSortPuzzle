@@ -212,7 +212,10 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const ctx = canvas?.getContext("2d");
       if (!ctx) return [];
 
-      const result: RGB[] = [];
+      // 同系色を1つの色グループとしてまとめ、各グループの出現数も数える。
+      // Water Sort は1色につき4マスなので、4マス以上確認できている色は
+      // すでに明確に判定できている色として、色選択肢から除外する。
+      const colorGroups: { color: RGB; count: number }[] = [];
       const circles = Array.from(
         document.querySelectorAll<SVGCircleElement>(
           '.grid-overlay circle[r="4.2"]',
@@ -225,13 +228,19 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
 
         const rgb = sampleImageColor(ctx, x, y);
-        if (result.some((existing) => rgbDistance(existing, rgb) <= 36)) {
-          continue;
+        const group = colorGroups.find(
+          (existing) => rgbDistance(existing.color, rgb) <= 36,
+        );
+        if (group) {
+          group.count++;
+        } else {
+          colorGroups.push({ color: rgb, count: 1 });
         }
-        result.push(rgb);
       }
 
-      return result;
+      return colorGroups
+        .filter((group) => group.count < 4)
+        .map((group) => group.color);
     };
 
     const openPicker = (cell: CellRef) => {
@@ -252,9 +261,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       );
       let best: { cell: CellRef; distance: number } | null = null;
 
-      // 各グリッドのSVGは同じ領域に重なっているため、
-      // event.target だけでは下側のグリッドを取得できない。
-      // 全グリッドの交点を画面座標でヒットテストする。
       grids.forEach((svg, grid) => {
         const hitCircles = Array.from(
           svg.querySelectorAll<SVGCircleElement>('circle[r="10"]'),
@@ -269,7 +275,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           const cy = rect.top + rect.height / 2;
           const distance = Math.hypot(clientX - cx, clientY - cy);
 
-          // 見た目の交点から少し外れてクリックしても選択できるようにする。
           const hitRadius = Math.max(rect.width, rect.height) / 2 + 4;
           if (distance > hitRadius) return;
 
@@ -294,8 +299,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const delegatedPointerIds = new Set<number>();
 
     const onPointerDown = (event: PointerEvent) => {
-      // ドラッグ開始のためにこちらから再発火した pointerdown は
-      // このハンドラでは処理せず、BaseGridEditor にそのまま渡す。
       if (delegatedPointerIds.has(event.pointerId)) {
         delegatedPointerIds.delete(event.pointerId);
         return;
@@ -303,9 +306,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
       const circle = getCircle(event);
       if (circle && Number(circle.getAttribute("r")) === 14) {
-        // ハンドルは pointerdown の時点では BaseGridEditor に渡さない。
-        // クリックなら色選択、一定距離以上動いたら元のリサイズ処理を
-        // pointerdown から開始させる。
         const cell = findCell(circle);
         if (!cell) return;
 
@@ -320,9 +320,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         return;
       }
 
-      // グリッドのSVGは全画面サイズで重なっているため、
-      // event.target だけでは下側のグリッドの交点を取得できない。
-      // 画面座標から全グリッドの交点を直接ヒットテストする。
       const cell = findCellAtPoint(event.clientX, event.clientY);
       if (!cell) return;
 
@@ -338,9 +335,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 20) {
         handlePointerStart.delete(event.pointerId);
 
-        // 元のリサイズ処理を開始するため、元のハンドルに
-        // pointerdown を再発火する。これにより BaseGridEditor 側の
-        // setPointerCapture を正しく実行させる。
         delegatedPointerIds.add(event.pointerId);
         start.target.dispatchEvent(
           new PointerEvent("pointerdown", {
@@ -362,8 +356,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           }),
         );
 
-        // pointerdown が遅延した分、現在位置を最初の移動位置として
-        // BaseGridEditor にも通知する。
         delegatedPointerIds.add(event.pointerId);
         start.target.dispatchEvent(
           new PointerEvent("pointermove", {
@@ -392,7 +384,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
       handlePointerStart.delete(event.pointerId);
 
-      // 移動していない場合だけ「クリック」とみなし、色選択UIを開く。
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 20) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -626,7 +617,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
           {availableColors.length === 0 && (
             <span style={{ color: "#666" }}>
-              画像から色を取得できませんでした
+              画像から選択可能な色を取得できませんでした
             </span>
           )}
 
