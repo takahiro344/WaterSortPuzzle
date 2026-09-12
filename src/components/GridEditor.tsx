@@ -349,7 +349,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const grids = Array.from(
         document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
       );
-      let best: { cell: CellRef; distance: number } | null = null;
+      const best: { match: { cell: CellRef; distance: number } | null } = {
+        match: null,
+      };
 
       grids.forEach((svg, grid) => {
         const hitCircles = Array.from(
@@ -373,13 +375,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             col: index % cols,
             row: Math.floor(index / cols),
           };
-          if (!best || distance < best.distance) {
-            best = { cell, distance };
+          if (!best.match || distance < best.match.distance) {
+            best.match = { cell, distance };
           }
         });
       });
 
-      return best?.cell ?? null;
+      return best.match?.cell ?? null;
     };
 
     const handlePointerStart = new Map<
