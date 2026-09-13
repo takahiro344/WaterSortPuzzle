@@ -407,45 +407,66 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
   const handleSolveClick = () => {
     setErrorMsg(null);
-    const canvas = canvasRef.current,
-      ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx || !grids.length) return;
+    if (!canvasSize.w || !canvasSize.h) return;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+
     const cells: GridCell[] = [];
     for (const grid of grids) {
       const points = gridPoints.get(grid.id);
       if (!points) continue;
-      for (let r = 0; r < CAPACITY; r++)
+      for (let r = 0; r < CAPACITY; r++) {
         for (let c = 0; c < grid.cols; c++) {
-          const pt = points[r][c],
-            key = cellKey(grid.id, c, r);
+          const p = points[r][c];
+          const key = cellKey(grid.id, c, r);
+          const override = overrides.get(key) ?? AUTO;
+          const rgb = sampleColorAt(ctx, p.x, p.y);
           cells.push({
             gridId: grid.id,
             col: c,
             row: r,
-            x: pt.x,
-            y: pt.y,
-            rgb: sampleColorAt(ctx, pt.x, pt.y),
-            value: overrides.get(key) ?? AUTO,
+            x: p.x,
+            y: p.y,
+            rgb,
+            value: override,
           });
         }
-    }
-    const { palette, assignedCells } = clusterColors(cells),
-      flatValues = assignedCells.map((c) => c.value),
-      inference = inferUnknownColor(flatValues, CAPACITY);
-    const warnings: string[] = [];
-    let resolvedValues = assignedCells;
-    if (flatValues.includes(UNKNOWN)) {
-      if (!inference.ok || inference.inferredColor === null) {
-        setErrorMsg(inference.message);
-        return;
       }
-      warnings.push(inference.message);
-      resolvedValues = assignedCells.map((c) =>
-        c.value === UNKNOWN
-          ? { ...c, value: inference.inferredColor as number }
-          : c,
-      );
     }
+
+    const sampled = cells.filter((cell) => cell.value === AUTO && cell.rgb);
+    const palette = clusterColors(sampled.map((cell) => cell.rgb as RGB));
+    const colorToValue = (rgb: RGB): number => {
+      let bestIndex = 0;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < palette.length; i++) {
+        const p = palette[i];
+        const d = Math.hypot(rgb.r - p.r, rgb.g - p.g, rgb.b - p.b);
+        if (d < bestDistance) {
+          bestDistance = d;
+          bestIndex = i;
+        }
+      }
+      return bestIndex;
+    };
+
+    for (const cell of cells) {
+      if (cell.value === AUTO && cell.rgb) cell.value = colorToValue(cell.rgb);
+    }
+
+    const inference = inferUnknownColor(cells, palette, CAPACITY);
+    if (!inference.ok) {
+      setErrorMsg(inference.message);
+      return;
+    }
+    const resolvedValues = cells.map((cell) => ({
+      ...cell,
+      value:
+        cell.value === UNKNOWN && inference.inferredColor !== null
+          ? inference.inferredColor
+          : cell.value,
+    }));
+    const warnings = inference.warning ? [inference.warning] : [];
     const valueByCell = new Map<string, number>();
     for (const cell of resolvedValues)
       valueByCell.set(`${cell.gridId}-${cell.col}-${cell.row}`, cell.value);
@@ -566,7 +587,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       <div
         ref={wrapperRef}
         className="canvas-wrapper"
-        style={{ width: canvasSize.w, height: canvasSize.h }}
+        style={{ width: `min(100%, ${canvasSize.w}px)` }}
       >
         <canvas ref={canvasRef} />
         {grids.map((grid) => {
@@ -579,6 +600,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                 className="grid-overlay"
                 width={canvasSize.w}
                 height={canvasSize.h}
+                viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`}
+                preserveAspectRatio="none"
                 onPointerDown={() => setSelectedGridId(grid.id)}
               >
                 {points.map((row, r) => (
@@ -626,6 +649,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                           onPointerDown={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
+                            setSelectedGridId(grid.id);
+                            if (e.currentTarget) {
+                              const rect = wrapperRef.current?.getBoundingClientRect();
+                              if (rect) {
+                                setSelectedGridId(grid.id);
+                              }
+                            }
                             cycleOverride(grid.id, c, r);
                           }}
                         />
@@ -634,69 +664,55 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                           cy={p.y}
                           r={HANDLE_R}
                           fill={fill}
-                          stroke={
-                            value === UNKNOWN
-                              ? "#000"
-                              : selected
-                                ? "#fff"
-                                : "#888"
-                          }
-                          strokeWidth={1}
+                          stroke={value === UNKNOWN ? "#000" : "#fff"}
+                          strokeWidth={1.5}
                           style={{ pointerEvents: "none" }}
                         />
                       </g>
                     );
                   }),
                 )}
-                {selected &&
-                  (grid.cols === 1
-                    ? (["topCenter", "bottomCenter"] as Handle[]).map(
-                        (handle) => {
-                          const row = handle === "topCenter" ? 0 : CAPACITY - 1;
-                          return renderHandle(
-                            grid,
-                            handle,
-                            bilinear(grid.corners, 0.5, row / (CAPACITY - 1)),
-                            cellKey(grid.id, 0, row),
-                          );
-                        },
-                      )
-                    : (
-                        Object.entries(grid.corners) as [keyof Corners, Point][]
-                      ).map(([corner, p]) => {
-                        const col =
-                          corner === "tl" || corner === "bl"
-                            ? 0
-                            : grid.cols - 1;
-                        const row =
-                          corner === "tl" || corner === "tr" ? 0 : CAPACITY - 1;
-                        return renderHandle(
-                          grid,
-                          corner,
-                          p,
-                          cellKey(grid.id, col, row),
-                        );
-                      }))}
+                {selected && (
+                  <>
+                    {renderHandle(grid, "tl", grid.corners.tl, `${grid.id}-tl-0`)}
+                    {renderHandle(grid, "tr", grid.corners.tr, `${grid.id}-tr-0`)}
+                    {renderHandle(grid, "bl", grid.corners.bl, `${grid.id}-bl-0`)}
+                    {renderHandle(grid, "br", grid.corners.br, `${grid.id}-br-0`)}
+                    {renderHandle(
+                      grid,
+                      "topCenter",
+                      {
+                        x: (grid.corners.tl.x + grid.corners.tr.x) / 2,
+                        y: grid.corners.tl.y,
+                      },
+                      `${grid.id}-topCenter-0`,
+                    )}
+                    {renderHandle(
+                      grid,
+                      "bottomCenter",
+                      {
+                        x: (grid.corners.bl.x + grid.corners.br.x) / 2,
+                        y: grid.corners.bl.y,
+                      },
+                      `${grid.id}-bottomCenter-0`,
+                    )}
+                  </>
+                )}
               </svg>
             </React.Fragment>
           );
         })}
       </div>
-      {errorMsg && <div className="error-message">{errorMsg}</div>}
+      {errorMsg && <div className="error-msg">{errorMsg}</div>}
       <div className="empty-tube-control">
         <label>
-          空の試験管の数
+          追加する空の管
           <input
             type="number"
             min={0}
+            max={20}
             value={emptyTubeCount}
             onChange={(e) => setEmptyTubeCount(e.target.value)}
-            onBlur={() =>
-              setEmptyTubeCount((value) => {
-                const parsed = parseInt(value, 10);
-                return parsed >= 0 ? String(parsed) : "0";
-              })
-            }
           />
         </label>
       </div>
