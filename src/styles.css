@@ -92,12 +92,16 @@ body {
 
 .canvas-wrapper canvas {
   display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 .grid-overlay {
   position: absolute;
   top: 0;
   left: 0;
+  max-width: 100%;
+  height: auto;
   touch-action: none;
 }
 
@@ -202,9 +206,6 @@ button:disabled {
 
 .solution-canvas-wrapper {
   width: 100%;
-  max-height: 60vh;
-  overflow-x: auto;
-  overflow-y: auto;
   display: flex;
   justify-content: center;
   margin: 4px 0;

@@ -480,9 +480,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       inference.inferredColor !== null &&
       inference.inferredColor >= palette.length
     ) {
-      const unknownCell = clusteredCells.find(
-        (cell) => cell.value === UNKNOWN,
-      );
+      const unknownCell = clusteredCells.find((cell) => cell.value === UNKNOWN);
       paletteRgb[inference.inferredColor] = unknownCell?.rgb ?? null;
     }
     onConfirm({ tubes, capacity: CAPACITY, paletteRgb, warnings });
@@ -646,7 +644,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                             e.stopPropagation();
                             setSelectedGridId(grid.id);
                             if (e.currentTarget) {
-                              const rect = wrapperRef.current?.getBoundingClientRect();
+                              const rect =
+                                wrapperRef.current?.getBoundingClientRect();
                               if (rect) {
                                 setSelectedGridId(grid.id);
                               }
@@ -671,10 +670,30 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                   <>
                     {grid.cols > 1 && (
                       <>
-                        {renderHandle(grid, "tl", grid.corners.tl, `${grid.id}-tl-0`)}
-                        {renderHandle(grid, "tr", grid.corners.tr, `${grid.id}-tr-0`)}
-                        {renderHandle(grid, "bl", grid.corners.bl, `${grid.id}-bl-0`)}
-                        {renderHandle(grid, "br", grid.corners.br, `${grid.id}-br-0`)}
+                        {renderHandle(
+                          grid,
+                          "tl",
+                          grid.corners.tl,
+                          `${grid.id}-tl-0`,
+                        )}
+                        {renderHandle(
+                          grid,
+                          "tr",
+                          grid.corners.tr,
+                          `${grid.id}-tr-0`,
+                        )}
+                        {renderHandle(
+                          grid,
+                          "bl",
+                          grid.corners.bl,
+                          `${grid.id}-bl-0`,
+                        )}
+                        {renderHandle(
+                          grid,
+                          "br",
+                          grid.corners.br,
+                          `${grid.id}-br-0`,
+                        )}
                       </>
                     )}
                     {grid.cols === 1 && (
@@ -709,7 +728,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       {errorMsg && <div className="error-msg">{errorMsg}</div>}
       <div className="empty-tube-control">
         <label>
-          追加する空の管
+          空の試験管の数
           <input
             type="number"
             min={0}

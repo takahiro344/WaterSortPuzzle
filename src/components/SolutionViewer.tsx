@@ -202,17 +202,11 @@ export const SolutionViewer: React.FC<Props> = ({
   }, [tubesNow, capacity, paletteRgb, currentMove, step, moves.length]);
 
   const scrollToBottom = () => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   };
 
   const scrollToTop = () => {
-    scrollRef.current?.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
