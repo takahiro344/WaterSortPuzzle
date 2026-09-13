@@ -532,14 +532,12 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
   return (
     <div className="step-panel">
-      <h2>(2/3) グリッドで色取得</h2>
+      <h2>盤面を調整</h2>
       <ol className="instructions">
+        <li>画像上のマス位置を、各管の色の中央に合わせてください。</li>
         <li>
-          各グリッドの交点が試験管の色水の中心に来るように、四隅のハンドルを調整してください。
-        </li>
-        <li>
-          g+ / g- でグリッドを追加・削除し、c+ / c-
-          で選択中のグリッドの縦線を追加・削除できます。
+          グリッド追加 / グリッド削除 でグリッドを追加・削除し、列を増やす /
+          列を減らす で選択中のグリッドの縦線を追加・削除できます。
         </li>
         <li>
           交点をクリックすると候補となる色の選択ボックスが表示されるので、色を選択し、
@@ -548,22 +546,22 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       </ol>
       <div className="grid-controls">
         <span>
-          グリッド:
+          選択中:
           {selectedGridId === null
             ? "-"
             : grids.findIndex((g) => g.id === selectedGridId) + 1}
         </span>
         <button onClick={handleRemoveGrid} disabled={grids.length <= 1}>
-          g-
+          グリッド削除
         </button>
-        <button onClick={handleAddGrid}>g+</button>
+        <button onClick={handleAddGrid}>グリッド追加</button>
         <button onClick={handleRemoveColumn} disabled={selectedGridId === null}>
-          c-
+          列を減らす
         </button>
         <button onClick={handleAddColumn} disabled={selectedGridId === null}>
-          c+
+          列を増やす
         </button>
-        <button onClick={handleResetGrid}>リセット</button>
+        <button onClick={handleResetGrid}>初期状態に戻す</button>
       </div>
       <div
         ref={wrapperRef}
@@ -687,7 +685,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       {errorMsg && <div className="error-message">{errorMsg}</div>}
       <div className="empty-tube-control">
         <label>
-          空試験管
+          空の試験管の数
           <input
             type="number"
             min={0}
@@ -703,9 +701,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         </label>
       </div>
       <div className="step-actions">
-        <button onClick={onBack}>戻る</button>
+        <button onClick={onBack}>画像を選び直す</button>
         <button className="primary" onClick={handleSolveClick}>
-          解く
+          この盤面を解析
         </button>
       </div>
     </div>

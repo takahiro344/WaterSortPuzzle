@@ -635,7 +635,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             maxWidth: "min(720px, calc(100vw - 32px))",
           }}
         >
-          <label id="grid-color-select-label">候補色</label>
+          <label id="grid-color-select-label">指定する色</label>
           <div style={{ position: "relative", minWidth: 72 }}>
             <button
               id="grid-color-select"
@@ -686,7 +686,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             {isColorPickerOpen && availableColors.length > 0 && (
               <div
                 role="listbox"
-                aria-label="読み込んだ色"
+                aria-label="認識された色"
                 style={{
                   position: "absolute",
                   left: 0,
@@ -713,7 +713,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                       type="button"
                       role="option"
                       aria-selected={selected}
-                      aria-label="この色を選択"
+                      aria-label="この色を指定"
                       onClick={() => {
                         setColor(hex);
                         setIsColorPickerOpen(false);
@@ -752,9 +752,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           </div>
 
           {availableColors.length === 0 && (
-            <span style={{ color: "#666" }}>
-              画像から選択可能な色を取得できませんでした
-            </span>
+            <span style={{ color: "#666" }}>利用できる色候補がありません</span>
           )}
 
           <button
@@ -763,14 +761,14 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             disabled={availableColors.length === 0}
             style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
           >
-            適用
+            色を反映
           </button>
           <button
             type="button"
             onClick={resetColor}
             style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
           >
-            自動判定に戻す
+            自動認識に戻す
           </button>
         </div>
       )}
