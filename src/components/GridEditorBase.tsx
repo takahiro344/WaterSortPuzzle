@@ -434,39 +434,32 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       }
     }
 
-    const sampled = cells.filter((cell) => cell.value === AUTO && cell.rgb);
-    const palette = clusterColors(sampled.map((cell) => cell.rgb as RGB));
-    const colorToValue = (rgb: RGB): number => {
-      let bestIndex = 0;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (let i = 0; i < palette.length; i++) {
-        const p = palette[i];
-        const d = Math.hypot(rgb.r - p.r, rgb.g - p.g, rgb.b - p.b);
-        if (d < bestDistance) {
-          bestDistance = d;
-          bestIndex = i;
-        }
-      }
-      return bestIndex;
-    };
+    const clustered = clusterColors(cells);
+    const palette = clustered.palette;
+    const clusteredCells = cells.map((cell, i) => ({
+      ...cell,
+      value: clustered.assignedCells[i].value,
+    }));
 
-    for (const cell of cells) {
-      if (cell.value === AUTO && cell.rgb) cell.value = colorToValue(cell.rgb);
-    }
-
-    const inference = inferUnknownColor(cells, palette, CAPACITY);
+    const inference = inferUnknownColor(
+      clusteredCells.map((cell) => cell.value),
+      CAPACITY,
+    );
     if (!inference.ok) {
       setErrorMsg(inference.message);
       return;
     }
-    const resolvedValues = cells.map((cell) => ({
+    const resolvedValues = clusteredCells.map((cell) => ({
       ...cell,
       value:
         cell.value === UNKNOWN && inference.inferredColor !== null
           ? inference.inferredColor
           : cell.value,
     }));
-    const warnings = inference.warning ? [inference.warning] : [];
+    const hadUnknownCell = clusteredCells.some(
+      (cell) => cell.value === UNKNOWN,
+    );
+    const warnings = hadUnknownCell ? [inference.message] : [];
     const valueByCell = new Map<string, number>();
     for (const cell of resolvedValues)
       valueByCell.set(`${cell.gridId}-${cell.col}-${cell.row}`, cell.value);
@@ -487,7 +480,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       inference.inferredColor !== null &&
       inference.inferredColor >= palette.length
     ) {
-      const unknownCell = cells.find((cell) => cell.value === UNKNOWN);
+      const unknownCell = clusteredCells.find((cell) => cell.value === UNKNOWN);
       paletteRgb[inference.inferredColor] = unknownCell?.rgb ?? null;
     }
     onConfirm({ tubes, capacity: CAPACITY, paletteRgb, warnings });
@@ -651,7 +644,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                             e.stopPropagation();
                             setSelectedGridId(grid.id);
                             if (e.currentTarget) {
-                              const rect = wrapperRef.current?.getBoundingClientRect();
+                              const rect =
+                                wrapperRef.current?.getBoundingClientRect();
                               if (rect) {
                                 setSelectedGridId(grid.id);
                               }
@@ -674,27 +668,55 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                 )}
                 {selected && (
                   <>
-                    {renderHandle(grid, "tl", grid.corners.tl, `${grid.id}-tl-0`)}
-                    {renderHandle(grid, "tr", grid.corners.tr, `${grid.id}-tr-0`)}
-                    {renderHandle(grid, "bl", grid.corners.bl, `${grid.id}-bl-0`)}
-                    {renderHandle(grid, "br", grid.corners.br, `${grid.id}-br-0`)}
-                    {renderHandle(
-                      grid,
-                      "topCenter",
-                      {
-                        x: (grid.corners.tl.x + grid.corners.tr.x) / 2,
-                        y: grid.corners.tl.y,
-                      },
-                      `${grid.id}-topCenter-0`,
+                    {grid.cols > 1 && (
+                      <>
+                        {renderHandle(
+                          grid,
+                          "tl",
+                          grid.corners.tl,
+                          `${grid.id}-tl-0`,
+                        )}
+                        {renderHandle(
+                          grid,
+                          "tr",
+                          grid.corners.tr,
+                          `${grid.id}-tr-0`,
+                        )}
+                        {renderHandle(
+                          grid,
+                          "bl",
+                          grid.corners.bl,
+                          `${grid.id}-bl-0`,
+                        )}
+                        {renderHandle(
+                          grid,
+                          "br",
+                          grid.corners.br,
+                          `${grid.id}-br-0`,
+                        )}
+                      </>
                     )}
-                    {renderHandle(
-                      grid,
-                      "bottomCenter",
-                      {
-                        x: (grid.corners.bl.x + grid.corners.br.x) / 2,
-                        y: grid.corners.bl.y,
-                      },
-                      `${grid.id}-bottomCenter-0`,
+                    {grid.cols % 2 === 1 && (
+                      <>
+                        {renderHandle(
+                          grid,
+                          "topCenter",
+                          {
+                            x: (grid.corners.tl.x + grid.corners.tr.x) / 2,
+                            y: grid.corners.tl.y,
+                          },
+                          `${grid.id}-topCenter-0`,
+                        )}
+                        {renderHandle(
+                          grid,
+                          "bottomCenter",
+                          {
+                            x: (grid.corners.bl.x + grid.corners.br.x) / 2,
+                            y: grid.corners.bl.y,
+                          },
+                          `${grid.id}-bottomCenter-0`,
+                        )}
+                      </>
                     )}
                   </>
                 )}
