@@ -30,9 +30,13 @@ export const App: React.FC = () => {
 
   const handleGridConfirm = async (data: GridConfirmResult) => {
     setSolving(true);
-    // UIをブロックしないよう次のフレームで実行
     await new Promise((r) => setTimeout(r, 30));
-    const solveResult = solve({ tubes: data.tubes, capacity: data.capacity });
+
+    const solveResult = solve({
+      tubes: data.tubes,
+      capacity: data.capacity,
+    });
+
     setResult({
       tubes: data.tubes,
       capacity: data.capacity,
@@ -42,6 +46,7 @@ export const App: React.FC = () => {
       solvable: solveResult.solvable,
       message: solveResult.message,
     });
+
     setSolving(false);
     setStep("result");
   };
@@ -55,7 +60,8 @@ export const App: React.FC = () => {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Water Sort Puzzle を解く</h1>
+        <h1>Water Sort Puzzle Solver</h1>
+        <p className="subtitle">画像から盤面を読み取り、解法を探索します</p>
       </header>
 
       {step === "upload" && <ImageUpload onImageLoaded={handleImageLoaded} />}
@@ -70,7 +76,7 @@ export const App: React.FC = () => {
 
       {solving && (
         <div className="step-panel">
-          <p>解いています...</p>
+          <p>盤面を解析しています…</p>
         </div>
       )}
 
@@ -83,6 +89,7 @@ export const App: React.FC = () => {
               ))}
             </div>
           )}
+
           {result.solvable ? (
             <SolutionViewer
               initialTubes={result.tubes}
@@ -94,18 +101,16 @@ export const App: React.FC = () => {
             />
           ) : (
             <div className="step-panel">
-              <h2>(3/3) 解答</h2>
+              <h2>解析結果</h2>
               <p className="error-msg">
-                解けませんでした。{result.message ?? ""}
+                解法を見つけられませんでした。{result.message ?? ""}
               </p>
               <p>
-                読み取ったグリッドの色（特に「不明」セルの推測結果）や、空の試験管の数が正しいか確認してください。
+                色の認識結果や空の管の数が正しいか確認して、盤面を調整してください。
               </p>
               <div className="button-row">
-                <button onClick={() => setStep("grid")}>
-                  グリッドを調整し直す
-                </button>
-                <button onClick={restart}>最初から</button>
+                <button onClick={() => setStep("grid")}>盤面を再調整</button>
+                <button onClick={restart}>別の画像を使う</button>
               </div>
             </div>
           )}
@@ -114,15 +119,8 @@ export const App: React.FC = () => {
 
       <footer className="app-footer">
         <p>
-          画像はブラウザ内でのみ処理され、サーバーへは送信されません。オリジナルサイト（
-          <a
-            href="https://baclips.com/solve-water-sort-puzzle/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            baclips.com
-          </a>
-          ）の仕様をベースに、色が不明な箇所は候補色を選択して解けるよう拡張した非公式版です。
+          画像とパズル情報はブラウザ内だけで処理され、外部サーバーには送信されません。
+          このツールは独自実装による非公式の Water Sort Puzzle Solver です。
         </p>
       </footer>
     </div>

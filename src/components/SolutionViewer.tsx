@@ -17,13 +17,16 @@ function applyMoves(
   upTo: number,
 ): number[][] {
   const tubes = initial.map((t) => t.slice());
+
   for (let i = 0; i < upTo; i++) {
     const m = moves[i];
+
     for (let k = 0; k < m.amount; k++) {
       const color = tubes[m.from].pop();
       if (color !== undefined) tubes[m.to].push(color);
     }
   }
+
   return tubes;
 }
 
@@ -42,7 +45,6 @@ function drawSolution(
   const dpr = window.devicePixelRatio || 1;
   const tubeWidth = 42;
   const tubeGap = 18;
-  // 横に並べきれず1行が長くなりすぎないよう、常に最大2段（2行）に分けて配置する。
   const columns = Math.max(1, Math.ceil(tubes.length / 2));
   const rows = Math.max(1, Math.ceil(tubes.length / columns));
   const contentWidth = columns * tubeWidth + (columns - 1) * tubeGap;
@@ -54,6 +56,7 @@ function drawSolution(
   canvas.height = Math.round(height * dpr);
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
@@ -66,6 +69,7 @@ function drawSolution(
   };
 
   const getY = (index: number) => Math.floor(index / columns) * rowHeight + 8;
+
   const tubeHeight = capacity * 30;
 
   for (let i = 0; i < tubes.length; i++) {
@@ -77,6 +81,7 @@ function drawSolution(
     ctx.save();
     ctx.lineWidth = isFrom || isTo ? 4 : 2;
     ctx.strokeStyle = isFrom ? "#e74c3c" : isTo ? "#27ae60" : "#333";
+
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x, y + tubeHeight - 12);
@@ -92,11 +97,14 @@ function drawSolution(
     ctx.stroke();
 
     const colors = tubes[i];
+
     for (let level = 0; level < capacity; level++) {
       const colorId = colors[level];
       if (colorId === undefined) continue;
+
       const rgb = paletteRgb[colorId] ?? null;
       ctx.fillStyle = displayColorFor(colorId, rgb);
+
       const slotY = y + tubeHeight - (level + 1) * 30;
       ctx.fillRect(x + 2, slotY + 1, tubeWidth - 4, 28);
     }
@@ -111,9 +119,6 @@ function drawSolution(
   if (currentMove) {
     const fromX = getX(currentMove.from) + tubeWidth / 2;
     const toX = getX(currentMove.to) + tubeWidth / 2;
-    // 段（行）ごとに試験管のY座標が異なるため、開始・終了それぞれの試験管の
-    // 実際の位置を使って矢印を描く（以前は両端を同じ高さに固定していたため、
-    // 別の段への移動で矢印がずれて見えていた）。
     const fromTopY = getY(currentMove.from) - 2;
     const toTopY = getY(currentMove.to) - 2;
     const startY = fromTopY + 8;
@@ -125,12 +130,14 @@ function drawSolution(
     ctx.strokeStyle = "#222";
     ctx.fillStyle = "#222";
     ctx.lineWidth = 2;
+
     ctx.beginPath();
     ctx.moveTo(fromX, startY);
     ctx.quadraticCurveTo(midX, controlY, toX, endY);
     ctx.stroke();
-    // 矢じりの向きは、曲線の終点における実際の接線方向（制御点→終点）から求める。
+
     const angle = Math.atan2(endY - controlY, toX - midX);
+
     ctx.beginPath();
     ctx.moveTo(toX, endY);
     ctx.lineTo(
@@ -169,12 +176,14 @@ export const SolutionViewer: React.FC<Props> = ({
   const [step, setStep] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
   const tubesNow = applyMoves(initialTubes, moves, step);
   const currentMove = step < moves.length ? moves[step] : null;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const redraw = () =>
       drawSolution(
         canvas,
@@ -185,50 +194,56 @@ export const SolutionViewer: React.FC<Props> = ({
         step,
         moves.length,
       );
+
     redraw();
     window.addEventListener("resize", redraw);
+
     return () => window.removeEventListener("resize", redraw);
   }, [tubesNow, capacity, paletteRgb, currentMove, step, moves.length]);
 
-  const scrollToBottom = () =>
+  const scrollToBottom = () => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  const scrollToTop = () =>
-    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const scrollToTop = () => {
+    scrollRef.current?.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
 
   return (
     <div className="step-panel">
-      <h2>(3/3) 解答</h2>
+      <h2>解法を確認</h2>
 
       {moves.length === 0 ? (
-        <p>すでに揃っています。動かす手はありません。</p>
+        <p>この盤面はすでに完成しています。</p>
       ) : (
-        <p>
-          解けました。手順を表示しますので [+] / [-] ボタンで進めてください。
-        </p>
+        <p>解法が見つかりました。下の操作で手順を1つずつ確認できます。</p>
       )}
 
       <div className="solution-scroll-controls">
-        <button onClick={scrollToBottom} aria-label="下へスクロール">
+        <button onClick={scrollToBottom} aria-label="下へ移動">
           ▼
         </button>
       </div>
 
       <div className="solution-canvas-wrapper" ref={scrollRef}>
-        <canvas ref={canvasRef} aria-label="Water Sort Puzzle の解答手順" />
+        <canvas ref={canvasRef} aria-label="パズルの解法表示" />
       </div>
 
       <div className="solution-scroll-controls">
-        <button onClick={scrollToTop} aria-label="上へスクロール">
+        <button onClick={scrollToTop} aria-label="上へ移動">
           ▲
         </button>
       </div>
 
       {currentMove && (
         <p className="move-desc">
-          {currentMove.from + 1} → {currentMove.to + 1}
+          管 {currentMove.from + 1} から 管 {currentMove.to + 1} へ移動
         </p>
       )}
 
@@ -239,21 +254,22 @@ export const SolutionViewer: React.FC<Props> = ({
             onClick={() => setStep((s) => Math.max(0, s - 1))}
             disabled={step <= 0}
           >
-            -
+            1手戻る
           </button>
+
           <button
             className="solution-step-button"
             onClick={() => setStep((s) => Math.min(moves.length, s + 1))}
             disabled={step >= moves.length}
           >
-            +
+            1手進む
           </button>
         </div>
       )}
 
       <div className="button-row">
-        <button onClick={onBack}>戻る</button>
-        <button onClick={onRestart}>最初から</button>
+        <button onClick={onBack}>盤面を調整する</button>
+        <button onClick={onRestart}>別の画像を使う</button>
       </div>
     </div>
   );

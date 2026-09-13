@@ -10,11 +10,13 @@ export const ImageUpload: React.FC<Props> = ({ onImageLoaded }) => {
   const handleFile = useCallback(
     (file: File) => {
       const reader = new FileReader();
+
       reader.onload = () => {
         const img = new Image();
         img.onload = () => onImageLoaded(img);
         img.src = reader.result as string;
       };
+
       reader.readAsDataURL(file);
     },
     [onImageLoaded],
@@ -33,23 +35,26 @@ export const ImageUpload: React.FC<Props> = ({ onImageLoaded }) => {
 
   return (
     <div className="step-panel">
-      <h2>(1/3) 画像ファイル選択</h2>
+      <h2>画像を読み込む</h2>
+
       <ol className="instructions">
         <li>
-          Water Sort Puzzle
-          で、まだひとつも動かしていない時点でスクリーンショットを撮ってください。スマホのカメラで別のスマホを撮影した画像でも構いません。
+          パズルを開始する前の画面をスクリーンショットしてください。
+          スマートフォンの画面を別の端末で撮影した画像も利用できます。
         </li>
         <li>
-          下のボタンから画像を選択するか、この枠にドラッグ＆ドロップしてください。
+          下のエリアをクリックして画像を選択するか、画像ファイルをドラッグしてください。
         </li>
       </ol>
+
       <div
         className="dropzone"
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
         onClick={() => inputRef.current?.click()}
       >
-        画像をここにドロップ、またはクリックして選択
+        画像ファイルを選択
+        <span className="dropzone-subtext">またはここへドラッグ</span>
         <input
           ref={inputRef}
           type="file"
@@ -58,9 +63,8 @@ export const ImageUpload: React.FC<Props> = ({ onImageLoaded }) => {
           onChange={onChange}
         />
       </div>
-      <p className="note">
-        画像はブラウザ内でのみ処理され、サーバーへは送信されません。
-      </p>
+
+      <p className="note">読み込んだ画像はこのブラウザ上でのみ処理されます。</p>
     </div>
   );
 };
