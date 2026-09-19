@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { sampleColorAt } from "../pixelSampling";
 import type { RGB } from "../types";
 import type { GridConfirmResult } from "./GridEditorBase";
 import { GridEditor as BaseGridEditor } from "./GridEditorBase";
@@ -36,41 +37,6 @@ function hexToRgb(value: string): RGB {
 
 function rgbDistance(a: RGB, b: RGB): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
-function sampleImageColor(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-): RGB {
-  const radius = 4;
-  const size = radius * 2 + 1;
-  const sx = Math.min(
-    Math.max(0, Math.round(x - radius)),
-    Math.max(0, ctx.canvas.width - size),
-  );
-  const sy = Math.min(
-    Math.max(0, Math.round(y - radius)),
-    Math.max(0, ctx.canvas.height - size),
-  );
-  const data = ctx.getImageData(sx, sy, size, size).data;
-
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let n = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    r += data[i];
-    g += data[i + 1];
-    b += data[i + 2];
-    n++;
-  }
-
-  return {
-    r: Math.round(r / n),
-    g: Math.round(g / n),
-    b: Math.round(b / n),
-  };
 }
 
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
@@ -194,7 +160,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const ctx = canvas?.getContext("2d");
     if (!ctx) return null;
 
-    return sampleImageColor(ctx, x, y);
+    return sampleColorAt(ctx, x, y);
   };
 
   useEffect(() => {
@@ -273,9 +239,14 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         const hitCircles = Array.from(
           svg.querySelectorAll<SVGCircleElement>('circle[r="10"]'),
         );
+        // 選択中のグリッドは、四隅のドラッグハンドル用に同じ座標へ
+        // 半径 4.2 の丸をもう一つ重ねて描画している(GridEditorBase の
+        // renderHandle)。querySelectorAll はそれも一緒に拾ってしまうため、
+        // 本来のマス数(hitCircles.length)分だけに絞り、四隅のセルが
+        // 二重カウントされないようにする。
         const circles = Array.from(
           svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
-        );
+        ).slice(0, hitCircles.length);
         const cols = Math.max(1, hitCircles.length / 4);
 
         circles.forEach((circle, index) => {
@@ -292,13 +263,23 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           const override = overridesRef.current.get(key);
           const rgb = override
             ? hexToRgb(override)
-            : sampleImageColor(ctx, x, y);
+            : sampleColorAt(ctx, x, y);
 
-          const group = colorGroups.find(
-            (existing) => rgbDistance(existing.color, rgb) <= 36,
-          );
-          if (group) {
-            group.count++;
+          // 「最初に閾値内で見つかったグループ」ではなく「最も近いグループ」に
+          // 割り当てる。複数の色が閾値内に競合する場合でも、実際の求解時に
+          // colorLogic.ts の clusterColors が行うクラスタリングと結果が
+          // ずれないようにするため。
+          let bestGroup: { color: RGB; count: number } | null = null;
+          let bestDist = Infinity;
+          for (const existing of colorGroups) {
+            const d = rgbDistance(existing.color, rgb);
+            if (d <= 36 && d < bestDist) {
+              bestDist = d;
+              bestGroup = existing;
+            }
+          }
+          if (bestGroup) {
+            bestGroup.count++;
           } else {
             colorGroups.push({ color: rgb, count: 1 });
           }
