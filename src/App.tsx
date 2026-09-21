@@ -66,17 +66,12 @@ export const App: React.FC = () => {
 
       {step === "upload" && <ImageUpload onImageLoaded={handleImageLoaded} />}
 
-      {image && (
-        // 画像が読み込まれている間は GridEditor をアンマウントせずに保持する。
-        // 「盤面を再調整」で grid ステップに戻ったときに、グリッド位置・列数・
-        // 候補色の選択状態がリセットされず残るようにするため（表示切り替えのみ）。
-        <div style={{ display: step === "grid" ? "block" : "none" }}>
-          <GridEditor
-            image={image}
-            onBack={restart}
-            onConfirm={handleGridConfirm}
-          />
-        </div>
+      {step === "grid" && image && (
+        <GridEditor
+          image={image}
+          onBack={restart}
+          onConfirm={handleGridConfirm}
+        />
       )}
 
       {solving && (
