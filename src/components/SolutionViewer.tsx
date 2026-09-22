@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { displayColorFor } from "../paletteDisplay";
 import { Move, RGB } from "../types";
 
+export interface UnknownCell {
+  tubeIndex: number;
+  position: number; // 0 = 管の一番下
+}
+
 interface Props {
   initialTubes: number[][];
   capacity: number;
@@ -9,6 +14,12 @@ interface Props {
   paletteRgb: (RGB | null)[];
   onBack: () => void;
   onRestart: () => void;
+  // 見出しと説明文をカスタマイズできるようにする（「?」確認手順の表示にも流用するため）
+  title?: string;
+  description?: string;
+  emptyMovesDescription?: string;
+  // まだ色が確定していない「?」のマス。塗りつぶさずに破線＋「?」で表示する。
+  unknownCells?: UnknownCell[];
 }
 
 function applyMoves(
@@ -38,6 +49,7 @@ function drawSolution(
   currentMove: Move | null,
   step: number,
   moveCount: number,
+  unknownCells: UnknownCell[],
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -102,10 +114,31 @@ function drawSolution(
       const colorId = colors[level];
       if (colorId === undefined) continue;
 
+      const slotY = y + tubeHeight - (level + 1) * 30;
+      const isUnknown = unknownCells.some(
+        (u) => u.tubeIndex === i && u.position === level,
+      );
+
+      if (isUnknown) {
+        // まだ色が確定していないマス。誤解を避けるため塗りつぶさず、
+        // 破線の枠と「?」だけを表示する。
+        ctx.save();
+        ctx.strokeStyle = "#888";
+        ctx.setLineDash([3, 2]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + 2, slotY + 1, tubeWidth - 4, 28);
+        ctx.setLineDash([]);
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillStyle = "#888";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("?", x + tubeWidth / 2, slotY + 15);
+        ctx.restore();
+        continue;
+      }
+
       const rgb = paletteRgb[colorId] ?? null;
       ctx.fillStyle = displayColorFor(colorId, rgb);
-
-      const slotY = y + tubeHeight - (level + 1) * 30;
       ctx.fillRect(x + 2, slotY + 1, tubeWidth - 4, 28);
     }
 
@@ -172,6 +205,10 @@ export const SolutionViewer: React.FC<Props> = ({
   paletteRgb,
   onBack,
   onRestart,
+  title = "解法を確認",
+  description = "解法が見つかりました。下の操作で手順を1つずつ確認できます。",
+  emptyMovesDescription = "この盤面はすでに完成しています。",
+  unknownCells = [],
 }) => {
   const [step, setStep] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -193,13 +230,14 @@ export const SolutionViewer: React.FC<Props> = ({
         currentMove,
         step,
         moves.length,
+        unknownCells,
       );
 
     redraw();
     window.addEventListener("resize", redraw);
 
     return () => window.removeEventListener("resize", redraw);
-  }, [tubesNow, capacity, paletteRgb, currentMove, step, moves.length]);
+  }, [tubesNow, capacity, paletteRgb, currentMove, step, moves.length, unknownCells]);
 
   const scrollToBottom = () => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -211,12 +249,12 @@ export const SolutionViewer: React.FC<Props> = ({
 
   return (
     <div className="step-panel">
-      <h2>解法を確認</h2>
+      <h2>{title}</h2>
 
       {moves.length === 0 ? (
-        <p>この盤面はすでに完成しています。</p>
+        <p>{emptyMovesDescription}</p>
       ) : (
-        <p>解法が見つかりました。下の操作で手順を1つずつ確認できます。</p>
+        <p>{description}</p>
       )}
 
       <div className="solution-scroll-controls">

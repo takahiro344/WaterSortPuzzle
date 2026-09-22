@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
+import { CLUSTER_THRESHOLD } from "../colorLogic";
 import { sampleColorAt } from "../pixelSampling";
 import type { RGB } from "../types";
-import type { GridConfirmResult } from "./GridEditorBase";
+import type { AmbiguousCell, GridConfirmResult } from "./GridEditorBase";
 import { GridEditor as BaseGridEditor } from "./GridEditorBase";
 
-export type { GridConfirmResult } from "./GridEditorBase";
+export type { AmbiguousCell, GridConfirmResult } from "./GridEditorBase";
 
 interface Props {
   image: HTMLImageElement;
@@ -39,9 +40,15 @@ function rgbDistance(a: RGB, b: RGB): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
+// 交点に複数候補が指定されているとき、盤面上での目印として使う破線ストロークの設定。
+const MULTI_CANDIDATE_STROKE = "#000";
+const MULTI_CANDIDATE_DASH = "2,1.5";
+
 export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const [selectedCell, setSelectedCell] = useState<CellRef | null>(null);
-  const [color, setColor] = useState("#ff0000");
+  // 色選択ボックスで現在チェックが入っている候補色（適用前の編集中の状態）。
+  // 1個なら通常の単一指定、2個以上なら「このうちのどれか」という曖昧指定になる。
+  const [pendingColors, setPendingColors] = useState<string[]>([]);
   const [availableColors, setAvailableColors] = useState<RGB[]>([]);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [colorPickerPosition, setColorPickerPosition] = useState({
@@ -49,11 +56,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     top: 0,
   });
   const colorPickerRef = useRef<HTMLDivElement | null>(null);
-  const overridesRef = useRef(new Map<string, string>());
+  // セルキー -> 手動指定した候補色（hex）の配列。要素数が2以上のセルが曖昧セル。
+  const overridesRef = useRef(new Map<string, string[]>());
 
   useEffect(() => {
     overridesRef.current.clear();
     setSelectedCell(null);
+    setPendingColors([]);
     setAvailableColors([]);
     setIsColorPickerOpen(false);
   }, [image]);
@@ -67,7 +76,8 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
       );
 
-      for (const [key, hex] of overridesRef.current) {
+      for (const [key, hexColors] of overridesRef.current) {
+        if (hexColors.length === 0) continue;
         const [gridIndex, col, row] = key.split("-").map(Number);
         const svg = grids[gridIndex];
         if (!svg) continue;
@@ -80,8 +90,22 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
         );
         const circle = circles[row * cols + col];
-        if (circle && circle.getAttribute("fill") !== hex) {
-          circle.setAttribute("fill", hex);
+        if (!circle) continue;
+
+        const fillHex = hexColors[0];
+        if (circle.getAttribute("fill") !== fillHex) {
+          circle.setAttribute("fill", fillHex);
+        }
+        // 候補が複数ある曖昧セルは、盤面上でも破線の縁取りで見分けられるようにする。
+        if (hexColors.length > 1) {
+          if (circle.getAttribute("stroke") !== MULTI_CANDIDATE_STROKE) {
+            circle.setAttribute("stroke", MULTI_CANDIDATE_STROKE);
+          }
+          if (circle.getAttribute("stroke-dasharray") !== MULTI_CANDIDATE_DASH) {
+            circle.setAttribute("stroke-dasharray", MULTI_CANDIDATE_DASH);
+          }
+        } else if (circle.getAttribute("stroke-dasharray")) {
+          circle.removeAttribute("stroke-dasharray");
         }
       }
     };
@@ -131,7 +155,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   const sampleCellColor = (cell: CellRef): RGB | null => {
     const key = `${cell.grid}-${cell.col}-${cell.row}`;
     const override = overridesRef.current.get(key);
-    if (override) return hexToRgb(override);
+    if (override && override.length > 0) return hexToRgb(override[0]);
 
     const grids = Array.from(
       document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
@@ -230,7 +254,13 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       // 交点ごとに「現在表示されている色」を集計する。
       // 手動指定済みの交点は overridesRef の色を優先することで、
       // 「画像判定3個 + 手動指定1個 = 4個」のようなケースも正しく数える。
-      const colorGroups: { color: RGB; count: number }[] = [];
+      const colorGroups: {
+        color: RGB;
+        count: number;
+        sumR: number;
+        sumG: number;
+        sumB: number;
+      }[] = [];
       const grids = Array.from(
         document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
       );
@@ -261,15 +291,26 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           };
           const key = `${cell.grid}-${cell.col}-${cell.row}`;
           const override = overridesRef.current.get(key);
-          const rgb = override
-            ? hexToRgb(override)
-            : sampleColorAt(ctx, x, y);
+          // 複数候補が選ばれている「曖昧セル」は、まだ色が確定していないので
+          // 候補色一覧の集計対象から除外する（暫定値を確定した色として
+          // 数えてしまうと、他の交点の候補色一覧にその暫定値が紛れ込んでしまう）。
+          if (override && override.length > 1) return;
+          const rgb =
+            override && override.length === 1
+              ? hexToRgb(override[0])
+              : sampleColorAt(ctx, x, y);
 
           // 「最初に閾値内で見つかったグループ」ではなく「最も近いグループ」に
           // 割り当てる。複数の色が閾値内に競合する場合でも、実際の求解時に
           // colorLogic.ts の clusterColors が行うクラスタリングと結果が
           // ずれないようにするため。
-          let bestGroup: { color: RGB; count: number } | null = null;
+          let bestGroup: {
+            color: RGB;
+            count: number;
+            sumR: number;
+            sumG: number;
+            sumB: number;
+          } | null = null;
           let bestDist = Infinity;
           for (const existing of colorGroups) {
             const d = rgbDistance(existing.color, rgb);
@@ -279,18 +320,34 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             }
           }
           if (bestGroup) {
+            // 代表色は「最初に合流した1ピクセル」に固定せず、そのグループに
+            // 合流した全ピクセルの平均値（重心）を都度更新する。こうしないと、
+            // colorLogic.ts の clusterColors（重心更新済み）と代表色がずれて、
+            // ここで選んだ候補色が求解時に別の色IDへ解決されてしまうことがある。
+            bestGroup.sumR += rgb.r;
+            bestGroup.sumG += rgb.g;
+            bestGroup.sumB += rgb.b;
             bestGroup.count++;
+            bestGroup.color = {
+              r: Math.round(bestGroup.sumR / bestGroup.count),
+              g: Math.round(bestGroup.sumG / bestGroup.count),
+              b: Math.round(bestGroup.sumB / bestGroup.count),
+            };
           } else {
-            colorGroups.push({ color: rgb, count: 1 });
+            colorGroups.push({
+              color: rgb,
+              count: 1,
+              sumR: rgb.r,
+              sumG: rgb.g,
+              sumB: rgb.b,
+            });
           }
         });
       });
 
-      // Water Sort は1色につき4マスなので、4個に達した色は
-      // 次に手動指定する候補から除外する。
-      return colorGroups
-        .filter((group) => group.count < 4)
-        .map((group) => group.color);
+      // 4個に達した色も候補として表示する（別の交点の誤判定を修正したい場合など、
+      // あえて5個目の候補として選びたいケースがあるため除外しない）。
+      return colorGroups.map((group) => group.color);
     };
 
     const openPicker = (cell: CellRef) => {
@@ -298,7 +355,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
       const current = overridesRef.current.get(key);
       const colors = collectAvailableColors();
       setAvailableColors(colors);
-      setColor(current ?? (colors[0] ? rgbToHex(colors[0]) : "#ff0000"));
+      // 既に手動指定済みならその候補を引き継ぎ、未指定なら何もチェックしない
+      // 状態で開く（自動判定色を勝手に選択済みにしない）。
+      setPendingColors(current && current.length > 0 ? [...current] : []);
 
       // 色選択UIを、クリックした交点の少し上に表示する。
       const grids = Array.from(
@@ -488,9 +547,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
   }, []);
 
   const applyColor = () => {
-    if (!selectedCell) return;
+    if (!selectedCell || pendingColors.length === 0) return;
     const key = `${selectedCell.grid}-${selectedCell.col}-${selectedCell.row}`;
-    overridesRef.current.set(key, color);
+    overridesRef.current.set(key, [...pendingColors]);
 
     const grids = Array.from(
       document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
@@ -505,7 +564,15 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
       );
       const circle = circles[selectedCell.row * cols + selectedCell.col];
-      circle?.setAttribute("fill", color);
+      if (circle) {
+        circle.setAttribute("fill", pendingColors[0]);
+        if (pendingColors.length > 1) {
+          circle.setAttribute("stroke", MULTI_CANDIDATE_STROKE);
+          circle.setAttribute("stroke-dasharray", MULTI_CANDIDATE_DASH);
+        } else {
+          circle.removeAttribute("stroke-dasharray");
+        }
+      }
     }
 
     setSelectedCell(null);
@@ -533,11 +600,14 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           svg.querySelectorAll<SVGCircleElement>('circle[r="4.2"]'),
         );
         const circle = circles[selectedCell.row * cols + selectedCell.col];
-        circle?.setAttribute("fill", rgbToHex(autoColor));
+        if (circle) {
+          circle.setAttribute("fill", rgbToHex(autoColor));
+          circle.removeAttribute("stroke-dasharray");
+        }
       }
     }
 
-    setColor(autoColor ? rgbToHex(autoColor) : "#ff0000");
+    setPendingColors(autoColor ? [rgbToHex(autoColor)] : []);
     setSelectedCell(null);
   };
 
@@ -552,7 +622,37 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
     const grids = Array.from(
       document.querySelectorAll<SVGSVGElement>(".grid-overlay"),
     );
+    const ambiguousCells: AmbiguousCell[] = [];
+    // 単一色に確定済みのセルが使った色ID（=もう他の曖昧セルの候補になり得ない色）
+    const fixedColorIds = new Set<number>();
     let tubeOffset = 0;
+
+    // hex色を既存パレットのIDに解決する。同じ色は同じIDを再利用する。
+    // 候補色のhexを既存パレットの色IDに対応付ける。単純な「距離1未満」の
+    // ほぼ完全一致判定だと、候補色一覧の集計(collectAvailableColors)と
+    // 自動クラスタリング(colorLogic.clusterColors)が別々にピクセルを
+    // サンプリングしているせいで生じるごくわずかな誤差でも別の色として
+    // 扱われてしまい、本来同じ色のはずの交点が「孤立した1個だけの色」に
+    // なってしまう（＝どの組み合わせを試しても解けない）不具合があったため、
+    // 自動クラスタリングと同じ基準(CLUSTER_THRESHOLD)で最も近い色を採用する。
+    const resolveHexToPaletteIndex = (hex: string): number => {
+      const rgb = hexToRgb(hex);
+      let paletteIndex = -1;
+      let bestDist = Infinity;
+      palette.forEach((candidate, index) => {
+        if (!candidate) return;
+        const d = rgbDistance(candidate, rgb);
+        if (d < bestDist) {
+          bestDist = d;
+          paletteIndex = index;
+        }
+      });
+      if (paletteIndex < 0 || bestDist > CLUSTER_THRESHOLD) {
+        paletteIndex = palette.length;
+        palette.push(rgb);
+      }
+      return paletteIndex;
+    };
 
     grids.forEach((svg, gridIndex) => {
       const hitCircles = Array.from(
@@ -566,30 +666,44 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
 
         for (let row = 0; row < 4; row++) {
           const key = `${gridIndex}-${col}-${row}`;
-          const hex = overridesRef.current.get(key);
-          if (!hex) continue;
+          const hexColors = overridesRef.current.get(key);
+          if (!hexColors || hexColors.length === 0) continue;
 
-          const rgb = hexToRgb(hex);
-          let paletteIndex = palette.findIndex(
-            (candidate) => candidate && rgbDistance(candidate, rgb) < 1,
-          );
-          if (paletteIndex < 0) {
-            paletteIndex = palette.length;
-            palette.push(rgb);
-          }
-
+          const colorIds = hexColors.map(resolveHexToPaletteIndex);
           const position = 3 - row;
-          if (position < tubes[tubeIndex].length) {
-            tubes[tubeIndex][position] = paletteIndex;
+          // position が現在の配列長を超える場合でも、直接インデックス代入すれば
+          // JS配列が自動的に伸長されるので、常に正しい位置に値が入る。
+          // （以前は position >= length のとき push していたが、EMPTYだった
+          // 上側の複数マスをまとめて手動指定すると配列末尾に積まれてしまい、
+          // 別の行の position と同じインデックスに衝突することがあった）
+          tubes[tubeIndex][position] = colorIds[0];
+          const actualIndex = position;
+
+          // 候補が複数ある場合は「暫定でcolorIds[0]を入れているが、
+          // 求解時にはcolorIdsの組み合わせをすべて自動で試す」曖昧セルとして記録する。
+          if (colorIds.length > 1) {
+            ambiguousCells.push({
+              tubeIndex,
+              position: actualIndex,
+              colorIds,
+            });
           } else {
-            tubes[tubeIndex].push(paletteIndex);
+            // 単一色に確定したセル。この色IDはもう他の曖昧セルの候補として
+            // 使えない（同じ色を二重に使うことになり、盤面として成立しないため）。
+            fixedColorIds.add(colorIds[0]);
           }
         }
       }
       tubeOffset += cols;
     });
 
-    onConfirm({ ...result, tubes, paletteRgb: palette });
+    // 曖昧セルの候補から、既に他のセルで単一色として確定済みの色を除外する。
+    // ユーザーがチェックを外し忘れていても、ここで自動的に矛盾を防ぐ。
+    for (const cell of ambiguousCells) {
+      cell.colorIds = cell.colorIds.filter((id) => !fixedColorIds.has(id));
+    }
+
+    onConfirm({ ...result, tubes, paletteRgb: palette, ambiguousCells });
   };
 
   return (
@@ -616,119 +730,149 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             maxWidth: "min(720px, calc(100vw - 32px))",
           }}
         >
-          <label id="grid-color-select-label">指定する色</label>
-          <div style={{ position: "relative", minWidth: 72 }}>
-            <button
-              id="grid-color-select"
-              type="button"
-              aria-haspopup="listbox"
-              aria-expanded={isColorPickerOpen}
-              aria-labelledby="grid-color-select-label"
-              onClick={() => setIsColorPickerOpen((open) => !open)}
-              disabled={availableColors.length === 0}
-              style={{
-                width: "100%",
-                height: 29,
-                padding: "3px 26px 3px 6px",
-                display: "flex",
-                alignItems: "center",
-                border: "1px solid #888",
-                borderRadius: 5,
-                background: "#fff",
-                cursor: availableColors.length === 0 ? "default" : "pointer",
-              }}
-            >
-              <span
-                aria-hidden="true"
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label id="grid-color-select-label">
+              指定する色（複数選択可）
+            </label>
+            <div style={{ position: "relative", minWidth: 72 }}>
+              <button
+                id="grid-color-select"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={isColorPickerOpen}
+                aria-labelledby="grid-color-select-label"
+                onClick={() => setIsColorPickerOpen((open) => !open)}
+                disabled={availableColors.length === 0}
                 style={{
-                  width: 19,
-                  height: 19,
-                  flexShrink: 0,
-                  borderRadius: 3,
-                  border: "1px solid #888",
-                  background: color,
-                }}
-              />
-              <span
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  right: 8,
-                  top: 11,
-                  width: 0,
-                  height: 0,
-                  borderLeft: "4px solid transparent",
-                  borderRight: "4px solid transparent",
-                  borderTop: "5px solid #555",
-                }}
-              />
-            </button>
-
-            {isColorPickerOpen && availableColors.length > 0 && (
-              <div
-                role="listbox"
-                aria-label="認識された色"
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: "calc(100% + 3px)",
-                  zIndex: 1001,
                   width: "100%",
-                  maxHeight: 176,
-                  overflowY: "auto",
-                  padding: 4,
-                  boxSizing: "border-box",
-                  background: "#fff",
+                  height: 29,
+                  padding: "3px 26px 3px 6px",
+                  display: "flex",
+                  alignItems: "center",
                   border: "1px solid #888",
                   borderRadius: 5,
-                  boxShadow: "0 4px 12px rgba(0,0,0,.2)",
+                  background: "#fff",
+                  cursor: availableColors.length === 0 ? "default" : "pointer",
                 }}
               >
-                {availableColors.map((rgb, index) => {
-                  const hex = rgbToHex(rgb);
-                  const selected = hex.toLowerCase() === color.toLowerCase();
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 19,
+                    height: 19,
+                    flexShrink: 0,
+                    display: "flex",
+                    overflow: "hidden",
+                    borderRadius: 3,
+                    border: "1px solid #888",
+                  }}
+                >
+                  {pendingColors.map((hex, i) => (
+                    <span key={i} style={{ flex: 1, background: hex }} />
+                  ))}
+                </span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: 11,
+                    width: 0,
+                    height: 0,
+                    borderLeft: "4px solid transparent",
+                    borderRight: "4px solid transparent",
+                    borderTop: "5px solid #555",
+                  }}
+                />
+              </button>
 
-                  return (
-                    <button
-                      key={`${hex}-${index}`}
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      aria-label="この色を指定"
-                      onClick={() => {
-                        setColor(hex);
-                        setIsColorPickerOpen(false);
-                      }}
-                      style={{
-                        width: "100%",
-                        height: 32,
-                        padding: 4,
-                        margin: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        border: selected
-                          ? "2px solid #000"
-                          : "2px solid transparent",
-                        borderRadius: 3,
-                        background: selected ? "#eee" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          width: 24,
-                          height: 24,
-                          flexShrink: 0,
-                          borderRadius: 3,
-                          border: "1px solid #888",
-                          background: hex,
+              {isColorPickerOpen && availableColors.length > 0 && (
+                <div
+                  role="listbox"
+                  aria-multiselectable="true"
+                  aria-label="認識された色（複数選択可）"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: "calc(100% + 3px)",
+                    zIndex: 1001,
+                    width: "100%",
+                    maxHeight: 176,
+                    overflowY: "auto",
+                    padding: 4,
+                    boxSizing: "border-box",
+                    background: "#fff",
+                    border: "1px solid #888",
+                    borderRadius: 5,
+                    boxShadow: "0 4px 12px rgba(0,0,0,.2)",
+                  }}
+                >
+                  {availableColors.map((rgb, index) => {
+                    const hex = rgbToHex(rgb);
+                    const selected = pendingColors.some(
+                      (c) => c.toLowerCase() === hex.toLowerCase(),
+                    );
+
+                    return (
+                      <button
+                        key={`${hex}-${index}`}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        aria-label={
+                          selected ? "この色の指定を解除" : "この色を候補に追加"
+                        }
+                        onClick={() => {
+                          setPendingColors((prev) => {
+                            const exists = prev.some(
+                              (c) => c.toLowerCase() === hex.toLowerCase(),
+                            );
+                            if (exists) {
+                              return prev.filter(
+                                (c) => c.toLowerCase() !== hex.toLowerCase(),
+                              );
+                            }
+                            return [...prev, hex];
+                          });
                         }}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
+                        style={{
+                          width: "100%",
+                          height: 32,
+                          padding: 4,
+                          margin: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          border: selected
+                            ? "2px solid #000"
+                            : "2px solid transparent",
+                          borderRadius: 3,
+                          background: selected ? "#eee" : "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: 24,
+                            height: 24,
+                            flexShrink: 0,
+                            borderRadius: 3,
+                            border: "1px solid #888",
+                            background: hex,
+                          }}
+                        />
+                        {selected && <span aria-hidden="true">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {pendingColors.length > 1 && (
+              <span style={{ color: "#666", fontSize: 12 }}>
+                {pendingColors.length}個の候補を選択中：解析時に組み合わせを自動で試します
+              </span>
             )}
           </div>
 
@@ -739,7 +883,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
           <button
             type="button"
             onClick={applyColor}
-            disabled={availableColors.length === 0}
+            disabled={availableColors.length === 0 || pendingColors.length === 0}
             style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
           >
             色を反映

@@ -9,8 +9,8 @@ function colorDistance(a: RGB, b: RGB): number {
 
 // 明るさが十分低い（黒に近い＝背景/ガラスの縁など）場合は空セルとみなす際の閾値
 const EMPTY_BRIGHTNESS_MAX = 40;
-// 同じ色とみなす距離の閾値
-const CLUSTER_THRESHOLD = 36;
+// 同じ色とみなす距離のしきい値。ピクセルサンプリングの手ブレなどを吸収するための許容量。
+export const CLUSTER_THRESHOLD = 36;
 
 export interface ClusterResult {
   palette: RGB[]; // 色ID -> 代表色
@@ -19,8 +19,17 @@ export interface ClusterResult {
 
 // 取得したピクセル色から、空セルを除いた色をクラスタリングして色IDを割り当てる。
 // すでに手動で EMPTY / UNKNOWN が指定されているセルはそのまま尊重する。
+//
+// 各クラスタの代表色は、そのクラスタに合流した全ピクセルの平均値（重心）として
+// 都度更新する。以前は「最初にそのクラスタに合流した1ピクセルの値」を代表色として
+// 固定していたため、実写真のノイズ（照明のムラ・影・反射など）で最初のサンプルが
+// たまたま偏っていた場合、本来別の色であるはずの色（例:マルーンと茶色）が閾値内に
+// 収まって誤って合流してしまう、処理順に結果が左右される、といった問題があった。
+// 重心を都度更新することで、外れ値1つに結果が引きずられにくくなる。
 export function clusterColors(cells: GridCell[]): ClusterResult {
   const palette: RGB[] = [];
+  // 各パレット色の合計値と合流数（重心の再計算に使う）
+  const sums: { r: number; g: number; b: number; count: number }[] = [];
   const assignedCells: {
     gridId: number;
     col: number;
@@ -67,6 +76,16 @@ export function clusterColors(cells: GridCell[]): ClusterResult {
       }
     }
     if (matched !== -1 && bestDist <= CLUSTER_THRESHOLD) {
+      const s = sums[matched];
+      s.r += cell.rgb.r;
+      s.g += cell.rgb.g;
+      s.b += cell.rgb.b;
+      s.count += 1;
+      palette[matched] = {
+        r: Math.round(s.r / s.count),
+        g: Math.round(s.g / s.count),
+        b: Math.round(s.b / s.count),
+      };
       assignedCells.push({
         gridId: cell.gridId,
         col: cell.col,
@@ -75,6 +94,7 @@ export function clusterColors(cells: GridCell[]): ClusterResult {
       });
     } else {
       palette.push(cell.rgb);
+      sums.push({ r: cell.rgb.r, g: cell.rgb.g, b: cell.rgb.b, count: 1 });
       assignedCells.push({
         gridId: cell.gridId,
         col: cell.col,

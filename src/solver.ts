@@ -163,3 +163,75 @@ export function solve(state: PuzzleState): SolveResult {
     message: "解が見つかりませんでした。読み取った色を確認してください。",
   };
 }
+
+export interface ExposeTarget {
+  tubeIndex: number;
+  position: number; // このpositionが試験管の一番上（露出）になったら成功
+}
+
+export interface ExposeResult {
+  targetIndex: number; // targets配列内でどのターゲットが露出したか
+  moves: Move[];
+}
+
+// 「?」（候補色未確定）のマスを、実際に色を決めずに一番上まで露出させる手順を探す。
+// 各ターゲット位置には、他のどの色とも絶対に一致しないユニークな仮の色ID（負数）を
+// 割り当てる。これにより、この仮の色が置かれた試験管へは絶対に注ぎ込めず、また
+// この仮の色自体を（正体が分からないまま）動かす手も生成されない（露出した瞬間に
+// 探索を打ち切るため）。既知の色だけを動かして、いずれかのターゲットの位置が
+// 試験管の最上段になった時点（＝残りがそこまでの高さだけになった時点）で成功とする。
+// 手数が最短になる組み合わせをBFSで探す（各手のコストは同じなので優先探索は不要）。
+export function findExposeSequence(
+  baseTubes: Tube[],
+  capacity: number,
+  targets: ExposeTarget[],
+  maxStates = 200000,
+): ExposeResult | null {
+  if (targets.length === 0) return null;
+
+  const tubes = cloneTubes(baseTubes);
+  targets.forEach((t, i) => {
+    tubes[t.tubeIndex][t.position] = -1000 - i;
+  });
+
+  const checkGoal = (state: Tube[]): number => {
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      if (state[t.tubeIndex].length === t.position + 1) return i;
+    }
+    return -1;
+  };
+
+  const already = checkGoal(tubes);
+  if (already >= 0) return { targetIndex: already, moves: [] };
+
+  const startKey = serialize(tubes);
+  const visited = new Set<string>([startKey]);
+  const queue: { state: Tube[]; moves: Move[] }[] = [
+    { state: tubes, moves: [] },
+  ];
+  let qi = 0;
+  let explored = 0;
+
+  while (qi < queue.length) {
+    const { state, moves } = queue[qi++];
+    explored++;
+    if (explored > maxStates) return null;
+
+    for (const move of generateMoves(state, capacity)) {
+      const next = applyMove(state, move);
+      const key = serialize(next);
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      const newMoves = [...moves, move];
+      const hit = checkGoal(next);
+      if (hit >= 0) {
+        return { targetIndex: hit, moves: newMoves };
+      }
+      queue.push({ state: next, moves: newMoves });
+    }
+  }
+
+  return null;
+}

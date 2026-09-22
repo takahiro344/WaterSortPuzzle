@@ -18,11 +18,20 @@ interface GridConfig {
   cols: number;
   corners: Corners;
 }
+// 1つの交点に複数の候補色が指定された場合の曖昧セル情報。
+// tubes[tubeIndex][position] は暫定的に colorIds[0] が入っているが、
+// 求解時にはここに挙げた colorIds の組み合わせをすべて自動で試す。
+export interface AmbiguousCell {
+  tubeIndex: number;
+  position: number;
+  colorIds: number[];
+}
 export interface GridConfirmResult {
   tubes: number[][];
   capacity: number;
   paletteRgb: (RGB | null)[];
   warnings: string[];
+  ambiguousCells?: AmbiguousCell[];
 }
 interface Props {
   image: HTMLImageElement;
@@ -497,7 +506,9 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         </li>
         <li>
           交点をクリックすると候補となる色の選択ボックスが表示されるので、色を選択し、
-          「適用」ボタンを押してください。
+          「色を反映」ボタンを押してください。候補は複数選択できます。複数選んだ
+          場合、その交点は「候補のいずれか」として登録され、[解く] を押した際に
+          組み合わせを自動ですべて試します。
         </li>
       </ol>
       <div className="grid-controls">
