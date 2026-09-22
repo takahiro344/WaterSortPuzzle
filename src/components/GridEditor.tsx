@@ -731,7 +731,14 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             maxWidth: "min(720px, calc(100vw - 32px))",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              width: 180,
+            }}
+          >
             <label id="grid-color-select-label">
               指定する色（複数選択可）
             </label>
@@ -871,7 +878,14 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
               )}
             </div>
             {pendingColors.length > 1 && (
-              <span style={{ color: "#666", fontSize: 12 }}>
+              <span
+                style={{
+                  color: "#666",
+                  fontSize: 12,
+                  whiteSpace: "normal",
+                  wordBreak: "break-word",
+                }}
+              >
                 {pendingColors.length}個の候補を選択中：解析時に組み合わせを自動で試します
               </span>
             )}
