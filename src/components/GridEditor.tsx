@@ -345,9 +345,10 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
         });
       });
 
-      // 4個に達した色も候補として表示する（別の交点の誤判定を修正したい場合など、
-      // あえて5個目の候補として選びたいケースがあるため除外しない）。
-      return colorGroups.map((group) => group.color);
+      // すでに4個検出済みの色は、もう候補として選ぶ必要がないため一覧から除外する。
+      return colorGroups
+        .filter((group) => group.count < 4)
+        .map((group) => group.color);
     };
 
     const openPicker = (cell: CellRef) => {
