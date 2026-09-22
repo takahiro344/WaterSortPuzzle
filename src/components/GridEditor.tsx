@@ -725,7 +725,7 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             borderRadius: 5,
             boxShadow: "0 4px 16px rgba(0,0,0,.2)",
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-end",
             gap: 6,
             fontSize: 14,
             maxWidth: "min(720px, calc(100vw - 32px))",
