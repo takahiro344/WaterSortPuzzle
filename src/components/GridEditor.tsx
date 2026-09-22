@@ -877,18 +877,6 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
                 </div>
               )}
             </div>
-            {pendingColors.length > 1 && (
-              <span
-                style={{
-                  color: "#666",
-                  fontSize: 12,
-                  whiteSpace: "normal",
-                  wordBreak: "break-word",
-                }}
-              >
-                {pendingColors.length}個の候補を選択中：解析時に組み合わせを自動で試します
-              </span>
-            )}
           </div>
 
           {availableColors.length === 0 && (
@@ -899,14 +887,24 @@ export const GridEditor: React.FC<Props> = ({ image, onBack, onConfirm }) => {
             type="button"
             onClick={applyColor}
             disabled={availableColors.length === 0 || pendingColors.length === 0}
-            style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
+            style={{
+              height: 29,
+              whiteSpace: "nowrap",
+              fontSize: 13,
+              padding: "0 8px",
+            }}
           >
             色を反映
           </button>
           <button
             type="button"
             onClick={resetColor}
-            style={{ whiteSpace: "nowrap", fontSize: 13, padding: "4px 8px" }}
+            style={{
+              height: 29,
+              whiteSpace: "nowrap",
+              fontSize: 13,
+              padding: "0 8px",
+            }}
           >
             自動認識に戻す
           </button>
